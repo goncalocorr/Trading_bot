@@ -42,13 +42,15 @@ class ExecutionOrchestrator {
     tradeModel,
     orderModel,
     riskManager,
-    telegramService
+    telegramService,
+    logger
   }) {
     this.executionEngine = executionEngine;
     this.tradeModel = tradeModel;
     this.orderModel = orderModel;
     this.riskManager = riskManager;
     this.telegramService = telegramService;
+    this.logger = logger;
   }
 
   async recordOrder(role, payload) {
@@ -204,6 +206,12 @@ class ExecutionOrchestrator {
   }
 
   async executeBuyTrade({ pair, scoreResult, triggerSource, metadata, buildTradeRiskPlan }) {
+    this.logger?.info("buy_trade_execution_started", {
+      pair,
+      triggerSource,
+      executionMode: scoreResult?.score?.executionMode || null,
+      totalScore: scoreResult?.score?.totalScore || null
+    });
     const bookTicker = await this.executionEngine.getBestBookTicker(pair);
     const limitReferencePrice = Number(bookTicker.bidPrice || 0);
     const marketReferencePrice = Number(bookTicker.askPrice || 0);
@@ -218,6 +226,10 @@ class ExecutionOrchestrator {
     });
 
     if (riskPlan.positionSizing.quantity <= 0) {
+      this.logger?.warn("buy_trade_blocked_no_capital", {
+        pair,
+        triggerSource
+      });
       return {
         ok: false,
         action: "blocked",
@@ -291,6 +303,11 @@ class ExecutionOrchestrator {
     }
 
     if (ocoOrder?.error) {
+      this.logger?.error("buy_trade_oco_failed", {
+        pair,
+        triggerSource,
+        message: ocoOrder.error
+      });
       const emergencyCloseOrder = await this.executionEngine.closeSpotPositionAtMarket({
         symbol: pair,
         side: "SELL",
@@ -380,6 +397,13 @@ class ExecutionOrchestrator {
       scoreTotal: trade.score_total,
       scoreBreakdown: trade.score_breakdown
     });
+    this.logger?.info("buy_trade_opened", {
+      pair,
+      tradeId: trade.id,
+      triggerSource,
+      quantity: executedQuantity,
+      entryPrice
+    });
 
     return {
       ok: true,
@@ -395,6 +419,10 @@ class ExecutionOrchestrator {
     const existingLongs = openTrades.filter((trade) => trade.pair === pair && trade.side === "BUY");
 
     if (existingLongs.length === 0) {
+      this.logger?.info("sell_signal_skipped", {
+        pair,
+        triggerSource
+      });
       return {
         ok: false,
         action: "spot_sell_skipped",
@@ -413,6 +441,12 @@ class ExecutionOrchestrator {
       );
       results.push(result);
     }
+
+    this.logger?.info("sell_signal_closed_positions", {
+      pair,
+      triggerSource,
+      closedCount: results.length
+    });
 
     return {
       ok: true,
@@ -474,6 +508,12 @@ class ExecutionOrchestrator {
       cancelReason,
       status: cancelReason === "manual_cancel" ? "cancelled" : "closed",
       metadata
+    });
+    this.logger?.info("trade_closed", {
+      tradeId: trade.id,
+      pair: trade.pair,
+      cancelReason,
+      status: finalized.trade?.status || null
     });
 
     return {
@@ -606,7 +646,11 @@ class ExecutionOrchestrator {
         // eslint-disable-next-line no-await-in-loop
         await this.activateBreakEvenProtection(trade);
       } catch (error) {
-        console.error(`Break-even activation failed for trade ${trade.id}: ${error.message}`);
+        this.logger?.error("break_even_activation_failed", {
+          tradeId: trade.id,
+          pair: trade.pair,
+          message: error.message
+        });
       }
     }
   }

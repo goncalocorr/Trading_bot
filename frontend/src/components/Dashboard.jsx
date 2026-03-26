@@ -1,11 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import ActiveTrades from "./ActiveTrades";
-import Backtest from "./Backtest";
 import CapitalChart from "./CapitalChart";
 import SignalDebugPanel from "./SignalDebugPanel";
-import SettingsPanel from "./SettingsPanel";
 import StatsPanel from "./StatsPanel";
-import TradeHistory from "./TradeHistory";
 import {
   cancelTrade,
   compareBacktests,
@@ -26,12 +23,24 @@ import {
   updateSettings
 } from "../lib/api";
 
+const Backtest = lazy(() => import("./Backtest"));
+const SettingsPanel = lazy(() => import("./SettingsPanel"));
+const TradeHistory = lazy(() => import("./TradeHistory"));
+
 const tabs = [
   { id: "overview", label: "Overview" },
   { id: "history", label: "History" },
   { id: "backtest", label: "Backtest" },
   { id: "settings", label: "Settings" }
 ];
+
+function PanelLoader() {
+  return (
+    <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 text-sm text-slate-300 backdrop-blur">
+      Loading panel...
+    </section>
+  );
+}
 
 function formatCurrency(value) {
   return new Intl.NumberFormat("en-US", {
@@ -92,6 +101,11 @@ function buildManualSignalFeedback(result = {}) {
     tone: result.ok ? "success" : "warning",
     message: result.reason || "Manual signal processed."
   };
+}
+
+function normalizeNumericInput(value, fallback = 0) {
+  const normalized = Number(String(value ?? "").replace(",", "."));
+  return Number.isFinite(normalized) ? normalized : fallback;
 }
 
 function Dashboard() {
@@ -455,9 +469,9 @@ function Dashboard() {
         autoSwapEnabled: Boolean(settingsForm.autoSwapEnabled),
         autoApproveLiveEnabled: Boolean(settingsForm.autoApproveLiveEnabled),
         autoLiveDeployEnabled: Boolean(settingsForm.autoLiveDeployEnabled),
-        scoreThreshold: Number(settingsForm.scoreThreshold),
-        riskPerTrade: Number(settingsForm.riskPerTrade),
-        compoundRatio: Number(settingsForm.compoundRatio),
+        scoreThreshold: Math.round(normalizeNumericInput(settingsForm.scoreThreshold, 8)),
+        riskPerTrade: normalizeNumericInput(settingsForm.riskPerTrade, 0.01),
+        compoundRatio: normalizeNumericInput(settingsForm.compoundRatio, 0.5),
         tradingPairs: settingsForm.tradingPairs.split(",").map((pair) => pair.trim()).filter(Boolean),
         activeStrategies: settingsForm.activeStrategies
       });
@@ -722,47 +736,53 @@ function Dashboard() {
           ) : null}
 
           {activeTab === "history" ? (
-            <TradeHistory
-              trades={tradeHistory}
-              filters={tradeFilters}
-              onFilterChange={(field, value) => setTradeFilters((current) => ({ ...current, [field]: value }))}
-              onApplyFilters={refreshTradeHistory}
-            />
+            <Suspense fallback={<PanelLoader />}>
+              <TradeHistory
+                trades={tradeHistory}
+                filters={tradeFilters}
+                onFilterChange={(field, value) => setTradeFilters((current) => ({ ...current, [field]: value }))}
+                onApplyFilters={refreshTradeHistory}
+              />
+            </Suspense>
           ) : null}
 
           {activeTab === "backtest" ? (
-            <Backtest
-              form={backtestForm}
-              onChange={(field, value) => setBacktestForm((current) => ({ ...current, [field]: value }))}
-              onRun={handleBacktest}
-              loading={backtestLoading}
-              result={backtestResult}
-              strategies={availableBacktestStrategies}
-              runs={backtestRuns}
-              selectedRun={selectedBacktestRun}
-              onSelectRun={handleSelectBacktestRun}
-              runsLoading={backtestRunsLoading}
-              comparisons={backtestComparisons}
-              comparisonLoading={backtestComparisonLoading}
-              onCompare={handleCompareBacktests}
-              experiments={backtestExperiments}
+            <Suspense fallback={<PanelLoader />}>
+              <Backtest
+                form={backtestForm}
+                onChange={(field, value) => setBacktestForm((current) => ({ ...current, [field]: value }))}
+                onRun={handleBacktest}
+                loading={backtestLoading}
+                result={backtestResult}
+                strategies={availableBacktestStrategies}
+                runs={backtestRuns}
+                selectedRun={selectedBacktestRun}
+                onSelectRun={handleSelectBacktestRun}
+                runsLoading={backtestRunsLoading}
+                comparisons={backtestComparisons}
+                comparisonLoading={backtestComparisonLoading}
+                onCompare={handleCompareBacktests}
+                experiments={backtestExperiments}
                 experimentLoading={backtestExperimentLoading}
                 onRunExperiments={handleRunBacktestExperiments}
                 onFavoriteRun={handleFavoriteBacktestRun}
                 onPromoteRun={handlePromoteBacktestRun}
                 onApproveLive={handleApproveBacktestRunLive}
               />
+            </Suspense>
           ) : null}
 
           {activeTab === "settings" ? (
-            <SettingsPanel
-              settings={settings}
-              form={settingsForm}
-              onChange={(field, value) => setSettingsForm((current) => ({ ...current, [field]: value }))}
-              onSave={handleSaveSettings}
-              saving={settingsSaving}
-              strategies={availableBacktestStrategies}
-            />
+            <Suspense fallback={<PanelLoader />}>
+              <SettingsPanel
+                settings={settings}
+                form={settingsForm}
+                onChange={(field, value) => setSettingsForm((current) => ({ ...current, [field]: value }))}
+                onSave={handleSaveSettings}
+                saving={settingsSaving}
+                strategies={availableBacktestStrategies}
+              />
+            </Suspense>
           ) : null}
         </div>
       </div>

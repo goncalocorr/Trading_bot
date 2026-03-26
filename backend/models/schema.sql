@@ -123,6 +123,14 @@ CREATE TABLE IF NOT EXISTS backtest_promotion_events (
   KEY idx_backtest_promotion_events_run_created (run_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS runtime_state (
+  state_key VARCHAR(100) NOT NULL,
+  state_value JSON NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (state_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS missed_opportunities (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   pair VARCHAR(20) NOT NULL,

@@ -7,8 +7,38 @@ function StatCard({ label, value, accent = "text-emerald-300" }) {
   );
 }
 
+function MiniPanel({ title, children }) {
+  return (
+    <div className="rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
+      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{title}</p>
+      <div className="mt-2">{children}</div>
+    </div>
+  );
+}
+
+function StatusBadge({ label, tone = "slate" }) {
+  const toneClass =
+    tone === "success"
+      ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100"
+      : tone === "warning"
+        ? "border-amber-300/30 bg-amber-300/10 text-amber-100"
+        : tone === "danger"
+          ? "border-rose-300/30 bg-rose-300/10 text-rose-100"
+          : "border-white/10 bg-white/5 text-slate-200";
+
+  return (
+    <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${toneClass}`}>
+      {label}
+    </span>
+  );
+}
+
 function formatNumber(value) {
   return Number(value || 0).toFixed(2);
+}
+
+function formatWhen(value) {
+  return value ? new Date(value).toLocaleString() : "n/a";
 }
 
 function StatsPanel({ stats }) {
@@ -51,34 +81,42 @@ function StatsPanel({ stats }) {
         </div>
 
         <div className="grid gap-4 xl:grid-cols-4">
-          <div className="rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Autonomy Mode</p>
-            <p className="mt-2 text-sm font-semibold text-white">{autonomy?.mode || "manual"}</p>
-            <p className="mt-1 text-xs text-slate-500">Trading: {autonomy?.tradingMode || "paper"}</p>
-          </div>
-          <div className="rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Current Regime</p>
-            <p className="mt-2 text-sm font-semibold text-white">{autonomy?.currentRegimeId || "mixed"}</p>
+          <MiniPanel title="Autonomy Mode">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-white">{autonomy?.mode || "manual"}</p>
+              <StatusBadge
+                label={autonomy?.tradingMode || "paper"}
+                tone={autonomy?.tradingMode === "live" ? "danger" : "success"}
+              />
+            </div>
+            <p className="mt-1 text-xs text-slate-500">Operating loop governance mode.</p>
+          </MiniPanel>
+          <MiniPanel title="Current Regime">
+            <p className="text-sm font-semibold text-white">{autonomy?.currentRegimeId || "mixed"}</p>
             <p className="mt-1 text-xs text-slate-500">
               Shadow: {autonomy?.shadowModeEnabled ? "enabled" : "disabled"}
             </p>
-          </div>
-          <div className="rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Strategy Set</p>
-            <p className="mt-2 text-sm font-semibold text-white">{autonomy?.strategySelection?.source || "runtime"}</p>
+          </MiniPanel>
+          <MiniPanel title="Strategy Set">
+            <p className="text-sm font-semibold text-white">{autonomy?.strategySelection?.source || "runtime"}</p>
             <p className="mt-1 text-xs text-slate-400">
               {(autonomy?.strategySelection?.strategyIds || []).join(", ") || "n/a"}
             </p>
-          </div>
-          <div className="rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Live Gate</p>
-            <p className="mt-2 text-sm font-semibold text-white">
-              {autonomy?.liveReadiness?.approvalGate?.status || "UNKNOWN"}
-            </p>
+          </MiniPanel>
+          <MiniPanel title="Live Gate">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-white">
+                {autonomy?.liveReadiness?.approvalGate?.status || "UNKNOWN"}
+              </p>
+              <StatusBadge
+                label={autonomy?.liveReadiness?.isApprovedForLive ? "approved" : "not approved"}
+                tone={autonomy?.liveReadiness?.isApprovedForLive ? "success" : "warning"}
+              />
+            </div>
             <p className="mt-1 text-xs text-slate-500">
               Auto pause: {autonomy?.autoPauseReason || "none"}
             </p>
-          </div>
+          </MiniPanel>
         </div>
 
         <div className="mt-4 rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
@@ -299,7 +337,13 @@ function StatsPanel({ stats }) {
           </div>
           <div className="rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
             <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Approval Gate</p>
-            <p className="mt-2 text-sm font-semibold text-white">{paperValidation?.approvalGate?.status || "UNKNOWN"}</p>
+            <div className="mt-2 flex items-center gap-2">
+              <p className="text-sm font-semibold text-white">{paperValidation?.approvalGate?.status || "UNKNOWN"}</p>
+              <StatusBadge
+                label={paperValidation?.approvalGate?.canApproveLive ? "ready" : "waiting"}
+                tone={paperValidation?.approvalGate?.canApproveLive ? "success" : "warning"}
+              />
+            </div>
             <p className="mt-1 text-xs text-slate-400">{paperValidation?.approvalGate?.reason || "No approval data yet."}</p>
             <p className="mt-3 text-xs text-slate-400">
               Thresholds: {paperValidation?.approvalGate?.thresholds?.minTrades || 0} trades, {formatNumber(paperValidation?.approvalGate?.thresholds?.minWinRate)}% win, {formatNumber(paperValidation?.approvalGate?.thresholds?.minPnl)} pnl
@@ -337,11 +381,18 @@ function StatsPanel({ stats }) {
 
           <div className="rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
             <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Recommendation</p>
-            <p className="mt-2 text-sm font-semibold text-white">{recommendation?.action || "WAIT"}</p>
+            <div className="mt-2 flex items-center gap-2">
+              <p className="text-sm font-semibold text-white">{recommendation?.action || "WAIT"}</p>
+              <StatusBadge
+                label={recommendation?.confidence || "n/a"}
+                tone={
+                  recommendation?.action === "SWAP_TO_CHALLENGER" || recommendation?.action === "READY_FOR_LIVE_REVIEW"
+                    ? "success"
+                    : "warning"
+                }
+              />
+            </div>
             <p className="mt-1 text-xs text-slate-400">{recommendation?.reason || "No recommendation yet."}</p>
-            <p className="mt-3 text-xs text-slate-500">
-              Confidence: {recommendation?.confidence || "n/a"}
-            </p>
           </div>
         </div>
 
@@ -394,7 +445,7 @@ function StatsPanel({ stats }) {
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-[0.2em] text-slate-400">When</p>
-                  <p className="mt-2 text-sm font-semibold text-white">{event.created_at ? new Date(event.created_at).toLocaleString() : "n/a"}</p>
+                  <p className="mt-2 text-sm font-semibold text-white">{formatWhen(event.created_at)}</p>
                 </div>
               </article>
             ))

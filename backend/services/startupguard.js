@@ -6,7 +6,8 @@ class StartupGuard {
     macroEventsService,
     reconcileExchangeTrades,
     executionOrchestrator,
-    updateRuntimeSettings
+    updateRuntimeSettings,
+    logger
   }) {
     this.runtime = runtime;
     this.db = db;
@@ -15,10 +16,25 @@ class StartupGuard {
     this.reconcileExchangeTrades = reconcileExchangeTrades;
     this.executionOrchestrator = executionOrchestrator;
     this.updateRuntimeSettings = updateRuntimeSettings;
+    this.logger = logger;
   }
 
   isStrictMode() {
     return String(process.env.STARTUP_STRICT_MODE || "true").toLowerCase() !== "false";
+  }
+
+  computeOverallOk(checks) {
+    if (this.runtime.tradingMode === "live") {
+      return (
+        checks.database.ok &&
+        checks.exchangePing.ok &&
+        checks.exchangeAccount.ok &&
+        checks.liveReadiness.ok &&
+        checks.reconciliation.ok
+      );
+    }
+
+    return checks.database.ok && checks.exchangePing.ok && checks.reconciliation.ok;
   }
 
   async run() {
@@ -113,12 +129,24 @@ class StartupGuard {
       }
     }
 
-    return {
+    const result = {
       strictMode: this.isStrictMode(),
       ranAt: new Date().toISOString(),
       checks,
-      overallOk: Object.values(checks).every((item) => item.ok)
+      overallOk: this.computeOverallOk(checks)
     };
+
+    if (this.logger) {
+      this.logger.info("startup_guard_completed", {
+        overallOk: result.overallOk,
+        strictMode: result.strictMode,
+        tradingMode: this.runtime.tradingMode,
+        autoPauseReason: this.runtime.autoPauseReason || null
+      });
+    }
+
+    await this.runtime.persistState?.();
+    return result;
   }
 }
 

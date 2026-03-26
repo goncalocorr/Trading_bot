@@ -30,6 +30,7 @@ class BinanceService {
       : process.env.BINANCE_BASE_URL || DEFAULT_LIVE_BASE_URL;
     this.recvWindow = Number(process.env.BINANCE_RECV_WINDOW || DEFAULT_RECV_WINDOW);
     this.symbolInfoCache = new Map();
+    this.timeOffsetMs = 0;
 
     this.http = axios.create({
       baseURL: this.baseURL,
@@ -65,20 +66,45 @@ class BinanceService {
     return crypto.createHmac("sha256", this.apiSecret).update(queryString).digest("hex");
   }
 
-  async request({ method = "GET", url, params = {}, signed = false, data }) {
-    const finalParams = { ...params };
+  async syncServerTime() {
+    const response = await this.http.request({
+      method: "GET",
+      url: "/api/v3/time"
+    });
+    const serverTime = Number(response.data?.serverTime || 0);
 
-    if (signed) {
-      this.validateCredentials();
-      finalParams.timestamp = Date.now();
-      finalParams.recvWindow = this.recvWindow;
+    if (Number.isFinite(serverTime) && serverTime > 0) {
+      this.timeOffsetMs = serverTime - Date.now();
     }
 
-    const queryString = this.buildQueryString(finalParams);
-    const signature = signed ? this.sign(queryString) : null;
-    const requestUrl = signature ? `${url}?${queryString}&signature=${signature}` : queryString ? `${url}?${queryString}` : url;
+    return {
+      serverTime,
+      timeOffsetMs: this.timeOffsetMs
+    };
+  }
 
-    try {
+  getAdjustedTimestamp() {
+    return Date.now() + this.timeOffsetMs;
+  }
+
+  isTimestampDriftError(error) {
+    return Number(error?.code) === -1021 || String(error?.message || "").toLowerCase().includes("timestamp");
+  }
+
+  async request({ method = "GET", url, params = {}, signed = false, data }) {
+    const attemptRequest = async () => {
+      const finalParams = { ...params };
+
+      if (signed) {
+        this.validateCredentials();
+        finalParams.timestamp = this.getAdjustedTimestamp();
+        finalParams.recvWindow = this.recvWindow;
+      }
+
+      const queryString = this.buildQueryString(finalParams);
+      const signature = signed ? this.sign(queryString) : null;
+      const requestUrl = signature ? `${url}?${queryString}&signature=${signature}` : queryString ? `${url}?${queryString}` : url;
+
       const response = await this.http.request({
         method,
         url: requestUrl,
@@ -86,8 +112,23 @@ class BinanceService {
       });
 
       return response.data;
+    };
+
+    try {
+      return await attemptRequest();
     } catch (error) {
-      throw this.formatRequestError(error);
+      const formattedError = this.formatRequestError(error);
+
+      if (signed && this.isTimestampDriftError(formattedError)) {
+        try {
+          await this.syncServerTime();
+          return await attemptRequest();
+        } catch (retryError) {
+          throw this.formatRequestError(retryError);
+        }
+      }
+
+      throw formattedError;
     }
   }
 

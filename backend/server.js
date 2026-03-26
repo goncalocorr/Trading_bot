@@ -12,6 +12,7 @@ const ReportModel = require("./models/Report");
 const BacktestRunModel = require("./models/BacktestRun");
 const BacktestRunMarkModel = require("./models/BacktestRunMark");
 const BacktestPromotionEventModel = require("./models/BacktestPromotionEvent");
+const RuntimeStateModel = require("./models/RuntimeState");
 const binanceService = require("./services/binance");
 const executionEngine = require("./services/executionengine");
 const ExecutionOrchestrator = require("./services/executionorchestrator");
@@ -29,6 +30,8 @@ const CircuitBreakerService = require("./services/circuitbreaker");
 const AutonomousOperator = require("./services/autonomousoperator");
 const StartupGuard = require("./services/startupguard");
 const HealthMonitor = require("./services/healthmonitor");
+const RuntimePersistenceService = require("./services/runtimepersistence");
+const logger = require("./services/logger");
 const indicatorsService = require("./services/indicators");
 const scorerService = require("./services/scorer");
 const riskManager = require("./services/riskmanager");
@@ -89,7 +92,8 @@ const executionOrchestrator = new ExecutionOrchestrator({
   tradeModel: TradeModel,
   orderModel: OrderModel,
   riskManager,
-  telegramService
+  telegramService,
+  logger: logger.child({ component: "execution_orchestrator" })
 });
 
 const signalInspector = new SignalInspector({
@@ -151,7 +155,8 @@ const strategyRunner = new StrategyRunner({
 const capitalAllocator = new CapitalAllocator();
 const circuitBreaker = new CircuitBreakerService({
   runtime,
-  telegramService
+  telegramService,
+  logger: logger.child({ component: "circuit_breaker" })
 });
 const autonomousOperator = new AutonomousOperator({
   runtime,
@@ -163,7 +168,12 @@ const autonomousOperator = new AutonomousOperator({
   riskManager,
   circuitBreaker,
   telegramService,
-  inferCurrentRegimeId: inferCurrentRegimeIdFromDebug
+  inferCurrentRegimeId: inferCurrentRegimeIdFromDebug,
+  logger: logger.child({ component: "autonomous_operator" })
+});
+const runtimePersistence = new RuntimePersistenceService({
+  runtimeStateModel: RuntimeStateModel,
+  logger: logger.child({ component: "runtime_persistence" })
 });
 const startupGuard = new StartupGuard({
   runtime,
@@ -172,7 +182,8 @@ const startupGuard = new StartupGuard({
   macroEventsService,
   reconcileExchangeTrades,
   executionOrchestrator,
-  updateRuntimeSettings
+  updateRuntimeSettings,
+  logger: logger.child({ component: "startup_guard" })
 });
 const healthMonitor = new HealthMonitor({
   runtime,
@@ -181,6 +192,16 @@ const healthMonitor = new HealthMonitor({
   executionEngine,
   macroEventsService
 });
+
+function persistRuntimeState() {
+  return runtimePersistence.persistRuntime(runtime).catch((error) => {
+    logger.error("runtime_state_persist_failed", {
+      message: error.message
+    });
+  });
+}
+
+runtime.persistState = persistRuntimeState;
 
 function parseTradingPairs(value) {
   return String(value || "")
@@ -328,6 +349,7 @@ function updateRuntimeSettings(payload = {}) {
     process.env.APPROVED_LIVE_RUN_ID = runtime.approvedLiveRunId ? String(runtime.approvedLiveRunId) : "";
   }
 
+  persistRuntimeState();
   return getRuntimeSettings();
 }
 
@@ -956,7 +978,10 @@ async function reconcileExchangeTrades() {
 
       circuitBreaker.recordSuccess("exchange");
     } catch (error) {
-      console.error(`Exchange reconciliation failed for ${pair}: ${error.message}`);
+      logger.error("exchange_reconciliation_failed", {
+        pair,
+        message: error.message
+      });
       // eslint-disable-next-line no-await-in-loop
       await circuitBreaker.recordFailure("exchange", error, { pair });
     }
@@ -1027,8 +1052,10 @@ app.use("/api/backtest", createBacktestRouter(context));
 
 async function startServer() {
   await db.initDatabase();
+  await runtimePersistence.hydrateRuntime(runtime);
   await ensureInitialCapitalSnapshot();
   runtime.startupStatus = await startupGuard.run();
+  await persistRuntimeState();
 
   cron.schedule("*/5 * * * *", async () => {
     await autonomousOperator.runAutonomousLoop();
@@ -1082,6 +1109,10 @@ async function startServer() {
     runtime.healthSnapshot = await healthMonitor.buildHealthSnapshot();
   });
 
+  cron.schedule("*/5 * * * *", async () => {
+    await persistRuntimeState();
+  });
+
   cron.schedule("55 23 * * *", async () => {
     await reporterService.generateReport("daily");
   }, { timezone: "UTC" });
@@ -1097,11 +1128,17 @@ async function startServer() {
   }, { timezone: "UTC" });
 
   app.listen(port, () => {
-    console.log(`Trading bot backend listening on port ${port}`);
+    logger.info("backend_started", {
+      port,
+      tradingMode: runtime.tradingMode,
+      autonomyMode: runtime.autonomyMode
+    });
   });
 }
 
 startServer().catch((error) => {
-  console.error(`Failed to start backend: ${error.message}`);
+  logger.error("backend_start_failed", {
+    message: error.message
+  });
   process.exit(1);
 });

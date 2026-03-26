@@ -9,7 +9,8 @@ class AutonomousOperator {
     riskManager,
     circuitBreaker,
     telegramService,
-    inferCurrentRegimeId
+    inferCurrentRegimeId,
+    logger
   }) {
     this.runtime = runtime;
     this.signalInspector = signalInspector;
@@ -21,6 +22,7 @@ class AutonomousOperator {
     this.circuitBreaker = circuitBreaker;
     this.telegramService = telegramService;
     this.inferCurrentRegimeId = inferCurrentRegimeId;
+    this.logger = logger;
   }
 
   parseActiveStrategies() {
@@ -185,6 +187,7 @@ class AutonomousOperator {
       strategySelection,
       summary
     };
+    await this.runtime.persistState?.();
 
     return this.runtime.shadowLastSummary;
   }
@@ -195,6 +198,7 @@ class AutonomousOperator {
       ...status,
       updatedAt: new Date().toISOString()
     };
+    await this.runtime.persistState?.();
 
     if (!this.runtime.botEnabled) {
       return {
@@ -241,6 +245,13 @@ class AutonomousOperator {
         await this.runShadowScan(status.currentRegimeId, status.strategySelection);
       }
 
+      this.logger?.info("autonomous_loop_completed", {
+        mode: this.runtime.autonomyMode,
+        tradingMode: this.runtime.tradingMode,
+        currentRegimeId: status.currentRegimeId,
+        strategySource: status.strategySelection?.source || null
+      });
+
       return {
         ok: true,
         action: "scan_completed",
@@ -251,6 +262,11 @@ class AutonomousOperator {
       await this.circuitBreaker.recordFailure("execution", error, {
         currentRegimeId: status.currentRegimeId,
         strategySelection: status.strategySelection
+      });
+      this.logger?.error("autonomous_loop_failed", {
+        mode: this.runtime.autonomyMode,
+        tradingMode: this.runtime.tradingMode,
+        message: error.message
       });
 
       return {
@@ -268,6 +284,7 @@ class AutonomousOperator {
       ...snapshot,
       updatedAt: new Date().toISOString()
     };
+    await this.runtime.persistState?.();
 
     if (this.telegramService?.notifyAutonomyHeartbeat && this.runtime.autonomyHeartbeatEnabled) {
       await this.telegramService.notifyAutonomyHeartbeat(this.runtime.lastAutonomySnapshot);

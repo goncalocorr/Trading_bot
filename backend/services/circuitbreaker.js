@@ -1,10 +1,12 @@
 class CircuitBreakerService {
   constructor({
     runtime,
-    telegramService
+    telegramService,
+    logger
   }) {
     this.runtime = runtime;
     this.telegramService = telegramService;
+    this.logger = logger;
   }
 
   getThresholds() {
@@ -20,6 +22,7 @@ class CircuitBreakerService {
     }
 
     this.runtime.circuitBreakers[counterKey] = 0;
+    this.runtime.persistState?.();
     return this.runtime.circuitBreakers;
   }
 
@@ -30,6 +33,7 @@ class CircuitBreakerService {
       lastTriggeredAt: null,
       lastReason: null
     };
+    this.runtime.persistState?.();
 
     return this.runtime.circuitBreakers;
   }
@@ -40,6 +44,12 @@ class CircuitBreakerService {
     this.runtime.circuitBreakers.lastTriggeredAt = new Date().toISOString();
     this.runtime.circuitBreakers.lastReason = reason;
 
+    this.logger?.warn("circuit_breaker_tripped", {
+      reason,
+      ...metadata,
+      counters: this.runtime.circuitBreakers
+    });
+
     if (this.telegramService?.notifyCircuitBreakerTriggered) {
       await this.telegramService.notifyCircuitBreakerTriggered({
         reason,
@@ -48,6 +58,7 @@ class CircuitBreakerService {
       });
     }
 
+    await this.runtime.persistState?.();
     return {
       tripped: true,
       reason
@@ -59,6 +70,13 @@ class CircuitBreakerService {
     const counterKey = type === "exchange" ? "exchangeFailures" : "executionFailures";
     const maxKey = type === "exchange" ? "maxExchangeFailures" : "maxExecutionFailures";
     this.runtime.circuitBreakers[counterKey] = Number(this.runtime.circuitBreakers[counterKey] || 0) + 1;
+    this.logger?.warn("circuit_breaker_failure_recorded", {
+      failureType: type,
+      counterKey,
+      counterValue: this.runtime.circuitBreakers[counterKey],
+      message: error?.message || String(error || "Unknown failure")
+    });
+    await this.runtime.persistState?.();
 
     if (Number(this.runtime.circuitBreakers[counterKey]) >= Number(thresholds[maxKey])) {
       return this.trip(`${type}_circuit_breaker`, {

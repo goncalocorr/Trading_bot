@@ -1,4 +1,26 @@
+function formatTimestamp(value) {
+  return value ? new Date(value).toLocaleString() : "n/a";
+}
+
+function InfoCard({ label, value, detail = null, accent = "text-white" }) {
+  return (
+    <div className="rounded-[20px] border border-white/10 bg-slate-950/50 p-4">
+      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{label}</p>
+      <p className={`mt-2 text-sm font-semibold ${accent}`}>{value}</p>
+      {detail ? <p className="mt-1 text-xs text-slate-400">{detail}</p> : null}
+    </div>
+  );
+}
+
 function SettingsPanel({ settings, form, onChange, onSave, saving = false, strategies = [] }) {
+  const regimeChampionDetail = [
+    settings?.regimeChampionTrendRunId ? `trend #${settings.regimeChampionTrendRunId}` : null,
+    settings?.regimeChampionSidewaysRunId ? `sideways #${settings.regimeChampionSidewaysRunId}` : null,
+    settings?.regimeChampionVolatileRunId ? `volatile #${settings.regimeChampionVolatileRunId}` : null
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
   return (
     <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
       <div className="mb-5">
@@ -198,9 +220,115 @@ function SettingsPanel({ settings, form, onChange, onSave, saving = false, strat
       </form>
 
       {settings ? (
-        <pre className="mt-5 overflow-x-auto rounded-[22px] border border-white/10 bg-slate-950/45 p-4 text-xs text-slate-300">
-          {JSON.stringify(settings, null, 2)}
-        </pre>
+        <div className="mt-5 space-y-4">
+          <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-white">Operational Snapshot</h3>
+              <p className="mt-1 text-sm text-slate-300">
+                Clean runtime view of autonomy, governance and recovery state.
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <InfoCard
+                label="Bot"
+                value={settings.botEnabled ? "Enabled" : "Paused"}
+                detail={settings.autoPauseReason ? `Auto pause: ${settings.autoPauseReason}` : "No active pause reason."}
+                accent={settings.botEnabled ? "text-emerald-300" : "text-amber-300"}
+              />
+              <InfoCard
+                label="Trading"
+                value={(settings.tradingMode || "paper").toUpperCase()}
+                detail={`Autonomy: ${settings.autonomyMode || "manual"}`}
+                accent={settings.tradingMode === "live" ? "text-rose-300" : "text-sky-300"}
+              />
+              <InfoCard
+                label="Champion"
+                value={settings.championRunId ? `Run #${settings.championRunId}` : "None"}
+                detail={settings.challengerRunId ? `Challenger: #${settings.challengerRunId}` : "No challenger assigned."}
+                accent="text-cyan-200"
+              />
+              <InfoCard
+                label="Live Approval"
+                value={settings.approvedLiveRunId ? `Run #${settings.approvedLiveRunId}` : "Not approved"}
+                detail={settings.autoLiveDeployEnabled ? "Auto-live deploy enabled." : "Manual live deployment only."}
+                accent={settings.approvedLiveRunId ? "text-emerald-300" : "text-slate-200"}
+              />
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <InfoCard
+                label="Regime Champions"
+                value={regimeChampionDetail || "Not assigned"}
+                detail="Per-regime champion slots used by adaptive governance."
+                accent="text-white"
+              />
+              <InfoCard
+                label="Active Strategies"
+                value={Array.isArray(settings.activeStrategies) && settings.activeStrategies.length > 0 ? settings.activeStrategies.join(", ") : "None"}
+                detail={`Pairs: ${(settings.tradingPairs || []).join(", ") || "n/a"}`}
+                accent="text-white"
+              />
+              <InfoCard
+                label="Autonomy Flags"
+                value={[
+                  settings.shadowModeEnabled ? "shadow" : null,
+                  settings.autoSwapEnabled ? "auto-swap" : null,
+                  settings.autoApproveLiveEnabled ? "auto-approve" : null,
+                  settings.autonomyHeartbeatEnabled ? "heartbeat" : null
+                ].filter(Boolean).join(" | ") || "All disabled"}
+                detail="Feature flags for supervised and full-auto behaviour."
+                accent="text-white"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-white">Recovery And Health</h3>
+              <p className="mt-1 text-sm text-slate-300">
+                Quick visibility into circuit breakers, last autonomy snapshot and startup recovery.
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <InfoCard
+                label="Execution Failures"
+                value={String(settings.circuitBreakers?.executionFailures || 0)}
+                detail={settings.circuitBreakers?.lastReason ? `Last reason: ${settings.circuitBreakers.lastReason}` : "No breaker reason recorded."}
+                accent="text-amber-300"
+              />
+              <InfoCard
+                label="Exchange Failures"
+                value={String(settings.circuitBreakers?.exchangeFailures || 0)}
+                detail={settings.circuitBreakers?.lastTriggeredAt ? `Triggered: ${formatTimestamp(settings.circuitBreakers.lastTriggeredAt)}` : "Never triggered."}
+                accent="text-rose-300"
+              />
+              <InfoCard
+                label="Last Autonomy Snapshot"
+                value={settings.lastAutonomySnapshot?.currentRegimeId || "n/a"}
+                detail={settings.lastAutonomySnapshot?.updatedAt ? formatTimestamp(settings.lastAutonomySnapshot.updatedAt) : "No autonomy snapshot yet."}
+                accent="text-sky-300"
+              />
+              <InfoCard
+                label="Shadow Summary"
+                value={settings.shadowLastSummary?.strategySelection?.source || "n/a"}
+                detail={settings.shadowLastSummary?.ranAt ? formatTimestamp(settings.shadowLastSummary.ranAt) : "Shadow scan has not run yet."}
+                accent="text-fuchsia-300"
+              />
+            </div>
+
+            <div className="mt-4 rounded-[20px] border border-white/10 bg-slate-950/60 p-4">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Startup Status</p>
+              <p className="mt-2 text-sm font-semibold text-white">
+                {settings.startupStatus?.overallOk ? "Startup checks passed" : "Startup checks pending or degraded"}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                Strict mode: {settings.startupStatus?.strictMode ? "enabled" : "disabled"} | Last run: {formatTimestamp(settings.startupStatus?.ranAt)}
+              </p>
+            </div>
+          </div>
+        </div>
       ) : null}
     </section>
   );
