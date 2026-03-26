@@ -9,14 +9,21 @@ const db = require("./models/db");
 const OrderModel = require("./models/Order");
 const TradeModel = require("./models/Trade");
 const ReportModel = require("./models/Report");
+const BacktestRunModel = require("./models/BacktestRun");
+const BacktestRunMarkModel = require("./models/BacktestRunMark");
+const BacktestPromotionEventModel = require("./models/BacktestPromotionEvent");
 const binanceService = require("./services/binance");
 const executionEngine = require("./services/executionengine");
 const ExecutionOrchestrator = require("./services/executionorchestrator");
 const SignalInspector = require("./services/signalinspector");
 const SignalMonitor = require("./services/signalmonitor");
+const StrategyHealthMonitor = require("./services/strategyhealthmonitor");
 const DashboardBuilder = require("./services/dashboardbuilder");
+const TradeAnalytics = require("./services/tradeanalytics");
 const StrategyRegistry = require("./services/strategyregistry");
 const StrategyRunner = require("./services/strategyrunner");
+const PaperValidationService = require("./services/papervalidation");
+const PaperValidationMonitor = require("./services/papervalidationmonitor");
 const indicatorsService = require("./services/indicators");
 const scorerService = require("./services/scorer");
 const riskManager = require("./services/riskmanager");
@@ -46,7 +53,11 @@ const runtime = {
   tradingPairs: parseTradingPairs(process.env.TRADING_PAIRS || "BTCUSDT"),
   lastMacroAlertKey: null,
   lastDrawdownAlertKey: null,
-  signalAlertState: {}
+  signalAlertState: {},
+  strategyHealthAlertState: {},
+  championRunId: Number(process.env.CHAMPION_RUN_ID || 0) || null,
+  challengerRunId: Number(process.env.CHALLENGER_RUN_ID || 0) || null,
+  paperValidationAlertKey: null
 };
 
 const executionOrchestrator = new ExecutionOrchestrator({
@@ -72,6 +83,28 @@ const signalMonitor = new SignalMonitor({
   runtime,
   signalInspector,
   telegramService
+});
+
+const strategyHealthMonitor = new StrategyHealthMonitor({
+  runtime,
+  tradeModel: TradeModel,
+  telegramService
+});
+
+const tradeAnalytics = new TradeAnalytics();
+const paperValidationService = new PaperValidationService({
+  runtime,
+  tradeAnalytics,
+  backtestRuns: BacktestRunModel,
+  promotionEvents: BacktestPromotionEventModel
+});
+const paperValidationMonitor = new PaperValidationMonitor({
+  runtime,
+  tradeModel: TradeModel,
+  paperValidationService,
+  promotionEvents: BacktestPromotionEventModel,
+  telegramService,
+  updateRuntimeSettings
 });
 
 const dashboardBuilder = new DashboardBuilder({
@@ -106,7 +139,13 @@ function getRuntimeSettings() {
     scoreThreshold: runtime.scoreThreshold,
     riskPerTrade: runtime.riskPerTrade,
     compoundRatio: runtime.compoundRatio,
-    tradingPairs: runtime.tradingPairs
+    tradingPairs: runtime.tradingPairs,
+    activeStrategies: String(process.env.ACTIVE_STRATEGIES || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+    championRunId: runtime.championRunId,
+    challengerRunId: runtime.challengerRunId
   };
 }
 
@@ -140,7 +179,34 @@ function updateRuntimeSettings(payload = {}) {
     process.env.TRADING_PAIRS = runtime.tradingPairs.join(",");
   }
 
+  if (Array.isArray(payload.activeStrategies) && payload.activeStrategies.length > 0) {
+    process.env.ACTIVE_STRATEGIES = payload.activeStrategies.map((item) => String(item).trim()).filter(Boolean).join(",");
+  }
+
+  if (payload.championRunId !== undefined) {
+    runtime.championRunId = payload.championRunId ? Number(payload.championRunId) : null;
+    process.env.CHAMPION_RUN_ID = runtime.championRunId ? String(runtime.championRunId) : "";
+  }
+
+  if (payload.challengerRunId !== undefined) {
+    runtime.challengerRunId = payload.challengerRunId ? Number(payload.challengerRunId) : null;
+    process.env.CHALLENGER_RUN_ID = runtime.challengerRunId ? String(runtime.challengerRunId) : "";
+  }
+
   return getRuntimeSettings();
+}
+
+function buildPaperValidationMetadata() {
+  return {
+    promotedRunId: runtime.championRunId || null,
+    championRunId: runtime.championRunId || null,
+    challengerRunId: runtime.challengerRunId || null,
+    slot: runtime.championRunId ? "champion" : null,
+    activeStrategies: String(process.env.ACTIVE_STRATEGIES || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+  };
 }
 
 function determineRuntimeDecision(scoreTotal) {
@@ -284,73 +350,23 @@ async function getTradeStatistics() {
   const trades = [...closedTrades, ...cancelledTrades].sort(
     (left, right) => new Date(right.closed_at || right.opened_at) - new Date(left.closed_at || left.opened_at)
   );
-  const pnlValues = trades.map((trade) => Number(trade.result_pnl || 0));
-  const winningTrades = trades.filter((trade) => Number(trade.result_pnl || 0) > 0);
-  const losingTrades = trades.filter((trade) => Number(trade.result_pnl || 0) < 0);
-  const bestTrade = trades.reduce(
-    (best, trade) => (best === null || Number(trade.result_pnl || 0) > Number(best.result_pnl || 0) ? trade : best),
-    null
-  );
-  const worstTrade = trades.reduce(
-    (worst, trade) => (worst === null || Number(trade.result_pnl || 0) < Number(worst.result_pnl || 0) ? trade : worst),
-    null
-  );
-  const byStrategyMap = new Map();
-
-  trades.forEach((trade) => {
-    const strategyKey = trade.metadata?.strategyId || trade.metadata?.strategy || "unknown";
-    const current = byStrategyMap.get(strategyKey) || {
-      strategyId: strategyKey,
-      totalTrades: 0,
-      wins: 0,
-      pnlTotal: 0,
-      bestTrade: null,
-      worstTrade: null
-    };
-    const pnl = Number(trade.result_pnl || 0);
-
-    current.totalTrades += 1;
-    current.pnlTotal += pnl;
-
-    if (pnl > 0) {
-      current.wins += 1;
-    }
-
-    if (current.bestTrade === null || pnl > Number(current.bestTrade.result_pnl || 0)) {
-      current.bestTrade = trade;
-    }
-
-    if (current.worstTrade === null || pnl < Number(current.worstTrade.result_pnl || 0)) {
-      current.worstTrade = trade;
-    }
-
-    byStrategyMap.set(strategyKey, current);
-  });
+  const analytics = tradeAnalytics.computeStatistics(trades);
+  const paperValidation = await paperValidationService.buildSummary(trades);
 
   return {
-    totalTrades: trades.length,
-    winRate: trades.length === 0 ? 0 : (winningTrades.length / trades.length) * 100,
-    avgProfitPerTrade:
-      winningTrades.length === 0
-        ? 0
-        : winningTrades.reduce((sum, trade) => sum + Number(trade.result_pnl || 0), 0) / winningTrades.length,
-    avgLossPerTrade:
-      losingTrades.length === 0
-        ? 0
-        : losingTrades.reduce((sum, trade) => sum + Number(trade.result_pnl || 0), 0) / losingTrades.length,
-    bestTrade,
-    worstTrade,
+    totalTrades: analytics.totalTrades,
+    winRate: analytics.winRate,
+    avgProfitPerTrade: analytics.avgProfitPerTrade,
+    avgLossPerTrade: analytics.avgLossPerTrade,
+    bestTrade: analytics.bestTrade,
+    worstTrade: analytics.worstTrade,
     longestWinningStreak: calculateLongestWinningStreak(trades),
-    sharpeRatio: calculateSharpeRatio(pnlValues),
-    byStrategy: [...byStrategyMap.values()].map((item) => ({
-      strategyId: item.strategyId,
-      totalTrades: item.totalTrades,
-      winRate: item.totalTrades === 0 ? 0 : (item.wins / item.totalTrades) * 100,
-      avgPnl: item.totalTrades === 0 ? 0 : item.pnlTotal / item.totalTrades,
-      pnlTotal: item.pnlTotal,
-      bestTrade: item.bestTrade,
-      worstTrade: item.worstTrade
-    }))
+    sharpeRatio: calculateSharpeRatio(analytics.pnlValues),
+    byStrategy: analytics.byStrategy,
+    byRegime: analytics.byRegime,
+    byStrategyRegime: analytics.byStrategyRegime,
+    strategyRankingByPeriod: analytics.strategyRankingByPeriod,
+    paperValidation
   };
 }
 
@@ -469,6 +485,11 @@ async function processSignal({
 }) {
   const normalizedPair = String(pair || runtime.tradingPairs[0]).toUpperCase();
   const normalizedSide = String(side || "BUY").toUpperCase();
+  const enrichedMetadata = {
+    ...metadata,
+    tradingMode: executionEngine.getModeLabel(),
+    paperValidation: buildPaperValidationMetadata()
+  };
   const availability = await checkTradingPauseStatus();
 
   if (!availability.allowed) {
@@ -485,7 +506,7 @@ async function processSignal({
     triggerSource,
     candlesByTimeframe,
     scoreThreshold: runtime.scoreThreshold,
-    metadata
+    metadata: enrichedMetadata
   });
 
   if (scoreResult.snapshots.sentiment?.evaluations?.fearGreed?.allowed === false) {
@@ -540,7 +561,7 @@ async function processSignal({
       pair: normalizedPair,
       triggerSource,
       metadata: {
-        ...metadata,
+        ...enrichedMetadata,
         score: scoreResult.score
       }
     });
@@ -561,7 +582,7 @@ async function processSignal({
     pair: normalizedPair,
     scoreResult,
     triggerSource,
-    metadata,
+    metadata: enrichedMetadata,
     buildTradeRiskPlan: (payload) => riskManager.buildTradeRiskPlan(payload)
   });
 }
@@ -633,9 +654,13 @@ app.use(
 
 const context = {
   runtime,
+  strategyRegistry,
   orderModel: OrderModel,
   tradeModel: TradeModel,
   reportModel: ReportModel,
+  backtestRuns: BacktestRunModel,
+  backtestRunMarks: BacktestRunMarkModel,
+  backtestPromotionEvents: BacktestPromotionEventModel,
   processSignal,
   cancelTrade: (tradeId, cancelReason, metadata) =>
     executionOrchestrator.closeTrade(tradeId, cancelReason, metadata),
@@ -645,6 +670,7 @@ const context = {
   getTradeStatistics,
   backtester: backtesterService,
   reporter: reporterService,
+  paperValidationService,
   getRuntimeSettings,
   updateRuntimeSettings
 };
@@ -689,6 +715,15 @@ async function startServer() {
 
   cron.schedule("* * * * *", async () => {
     await signalMonitor.monitorSignalReadinessAlerts();
+  });
+
+  cron.schedule("0 * * * *", async () => {
+    await strategyHealthMonitor.monitor();
+  });
+
+  cron.schedule("15 * * * *", async () => {
+    await paperValidationMonitor.monitorChampion();
+    await paperValidationMonitor.monitorRecommendations();
   });
 
   cron.schedule("55 23 * * *", async () => {

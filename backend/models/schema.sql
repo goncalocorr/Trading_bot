@@ -80,6 +80,49 @@ CREATE TABLE IF NOT EXISTS reports (
   KEY idx_reports_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS backtest_runs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  pair VARCHAR(20) NOT NULL,
+  timeframe VARCHAR(10) NOT NULL,
+  date_from DATETIME NOT NULL,
+  date_to DATETIME NOT NULL,
+  config JSON NOT NULL,
+  summary JSON NOT NULL,
+  result JSON NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_backtest_runs_pair_created (pair, created_at),
+  KEY idx_backtest_runs_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS backtest_run_marks (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  run_id BIGINT UNSIGNED NOT NULL,
+  is_favorite TINYINT(1) NOT NULL DEFAULT 0,
+  favorite_label VARCHAR(100) DEFAULT NULL,
+  promoted_to_paper TINYINT(1) NOT NULL DEFAULT 0,
+  promoted_at DATETIME DEFAULT NULL,
+  notes TEXT DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_backtest_run_marks_run_id (run_id),
+  KEY idx_backtest_run_marks_favorite (is_favorite),
+  KEY idx_backtest_run_marks_promoted (promoted_to_paper)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS backtest_promotion_events (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  run_id BIGINT UNSIGNED DEFAULT NULL,
+  slot ENUM('champion', 'challenger') NOT NULL,
+  action VARCHAR(50) NOT NULL,
+  metadata JSON DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_backtest_promotion_events_slot_created (slot, created_at),
+  KEY idx_backtest_promotion_events_run_created (run_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS missed_opportunities (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   pair VARCHAR(20) NOT NULL,

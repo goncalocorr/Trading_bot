@@ -64,3 +64,45 @@ export async function runBacktest(payload) {
   const { data } = await api.post("/api/backtest", payload);
   return data;
 }
+
+export async function fetchBacktestRuns(params = {}) {
+  const { data } = await api.get("/api/backtest/runs", {
+    params
+  });
+  return data;
+}
+
+export async function fetchBacktestRun(id) {
+  const { data } = await api.get(`/api/backtest/runs/${id}`);
+  return data;
+}
+
+export async function fetchBacktestStrategies() {
+  const { data } = await api.get("/api/backtest/strategies");
+  return data;
+}
+
+export async function compareBacktests(payload) {
+  const { data } = await api.post("/api/backtest/compare", payload);
+  return data;
+}
+
+export async function runBacktestExperiments(payload) {
+  const { data } = await api.post("/api/backtest/experiments", payload);
+  return data;
+}
+
+export async function favoriteBacktestRun(id, payload) {
+  const { data } = await api.patch(`/api/backtest/runs/${id}/favorite`, payload);
+  return data;
+}
+
+export async function promoteBacktestRun(id, payload = {}) {
+  const { data } = await api.patch(`/api/backtest/runs/${id}/promote`, payload);
+  return data;
+}
+
+export async function approveBacktestRunLive(id) {
+  const { data } = await api.patch(`/api/backtest/runs/${id}/approve-live`);
+  return data;
+}

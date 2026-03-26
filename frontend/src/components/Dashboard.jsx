@@ -8,12 +8,20 @@ import StatsPanel from "./StatsPanel";
 import TradeHistory from "./TradeHistory";
 import {
   cancelTrade,
+  compareBacktests,
+  favoriteBacktestRun,
+  fetchBacktestStrategies,
+  fetchBacktestRun,
+  fetchBacktestRuns,
   fetchCapitalHistory,
   fetchDashboard,
   fetchSignalDebug,
   fetchSettings,
   fetchTrades,
+  approveBacktestRunLive,
+  promoteBacktestRun,
   runBacktest,
+  runBacktestExperiments,
   triggerManualTrade,
   updateSettings
 } from "../lib/api";
@@ -108,9 +116,22 @@ function Dashboard() {
     pair: "BTCUSDT",
     dateFrom: "",
     dateTo: "",
-    timeframe: "15m"
+    timeframe: "15m",
+    activeStrategies: [],
+    mode: "standard",
+    feeRate: 0.001,
+    slippageBps: 5,
+    walkForwardTrainDays: 30,
+    walkForwardTestDays: 7,
+    walkForwardStepDays: 7,
+    maxCombinationSize: 2
   });
   const [backtestResult, setBacktestResult] = useState(null);
+  const [backtestRuns, setBacktestRuns] = useState([]);
+  const [selectedBacktestRun, setSelectedBacktestRun] = useState(null);
+  const [availableBacktestStrategies, setAvailableBacktestStrategies] = useState([]);
+  const [backtestComparisons, setBacktestComparisons] = useState([]);
+  const [backtestExperiments, setBacktestExperiments] = useState([]);
   const [settings, setSettings] = useState(null);
   const [settingsForm, setSettingsForm] = useState({
     botEnabled: true,
@@ -118,12 +139,18 @@ function Dashboard() {
     scoreThreshold: 8,
     riskPerTrade: 0.01,
     compoundRatio: 0.5,
-    tradingPairs: "BTCUSDT"
+    tradingPairs: "BTCUSDT",
+    activeStrategies: [],
+    championRunId: null,
+    challengerRunId: null
   });
   const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [backtestLoading, setBacktestLoading] = useState(false);
+  const [backtestRunsLoading, setBacktestRunsLoading] = useState(false);
+  const [backtestComparisonLoading, setBacktestComparisonLoading] = useState(false);
+  const [backtestExperimentLoading, setBacktestExperimentLoading] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [signalDebugLoading, setSignalDebugLoading] = useState(false);
   const [error, setError] = useState("");
@@ -144,24 +171,44 @@ function Dashboard() {
     const load = async () => {
       try {
         setLoadingDashboard(true);
-        const [dashboardResponse, historyResponse, tradesResponse, settingsResponse] = await Promise.all([
+        const [dashboardResponse, historyResponse, tradesResponse, settingsResponse, backtestRunsResponse, backtestStrategiesResponse] = await Promise.all([
           fetchDashboard(),
           fetchCapitalHistory(historyRange),
           fetchTrades(),
-          fetchSettings()
+          fetchSettings(),
+          fetchBacktestRuns({ limit: 10 }),
+          fetchBacktestStrategies()
         ]);
 
         setDashboardData(dashboardResponse);
         setCapitalHistory(historyResponse.history || []);
         setTradeHistory(tradesResponse.trades || []);
         setSettings(settingsResponse.settings || null);
+        setBacktestRuns(backtestRunsResponse.runs || []);
+        setAvailableBacktestStrategies(backtestStrategiesResponse.strategies || []);
+        setBacktestForm((current) => ({
+          ...current,
+          activeStrategies:
+            current.activeStrategies.length > 0
+              ? current.activeStrategies
+              : (backtestStrategiesResponse.strategies || [])
+                  .filter((strategy) => strategy.activeByDefault)
+                  .map((strategy) => strategy.id)
+        }));
+        if ((backtestRunsResponse.runs || []).length > 0) {
+          const latestRunResponse = await fetchBacktestRun(backtestRunsResponse.runs[0].id);
+          setSelectedBacktestRun(latestRunResponse.run || null);
+        }
         setSettingsForm({
           botEnabled: settingsResponse.settings?.botEnabled ?? true,
           tradingMode: settingsResponse.settings?.tradingMode ?? "paper",
           scoreThreshold: settingsResponse.settings?.scoreThreshold ?? 8,
           riskPerTrade: settingsResponse.settings?.riskPerTrade ?? 0.01,
           compoundRatio: settingsResponse.settings?.compoundRatio ?? 0.5,
-          tradingPairs: (settingsResponse.settings?.tradingPairs || ["BTCUSDT"]).join(",")
+          tradingPairs: (settingsResponse.settings?.tradingPairs || ["BTCUSDT"]).join(","),
+          activeStrategies: settingsResponse.settings?.activeStrategies || [],
+          championRunId: settingsResponse.settings?.championRunId || null,
+          challengerRunId: settingsResponse.settings?.challengerRunId || null
         });
         setError("");
         setManualFeedback(null);
@@ -275,11 +322,103 @@ function Dashboard() {
     try {
       const response = await runBacktest(backtestForm);
       setBacktestResult(response.result || null);
+      if (response.runId) {
+        const [runsResponse, selectedRunResponse] = await Promise.all([
+          fetchBacktestRuns({ limit: 10, pair: backtestForm.pair }),
+          fetchBacktestRun(response.runId)
+        ]);
+        setBacktestRuns(runsResponse.runs || []);
+        setSelectedBacktestRun(selectedRunResponse.run || null);
+      }
       setError("");
     } catch (requestError) {
       setError(requestError.response?.data?.message || requestError.message);
     } finally {
       setBacktestLoading(false);
+    }
+  };
+
+  const handleCompareBacktests = async () => {
+    const selectedStrategies = Array.isArray(backtestForm.activeStrategies) ? backtestForm.activeStrategies : [];
+    const uniqueStrategies = [...new Set(selectedStrategies)];
+
+    if (uniqueStrategies.length === 0) {
+      setError("Select at least one strategy to compare.");
+      return;
+    }
+
+    const strategySets = [];
+
+    if (uniqueStrategies.length > 1) {
+      strategySets.push({
+        label: "Selected Combo",
+        strategies: uniqueStrategies
+      });
+    }
+
+    uniqueStrategies.forEach((strategyId) => {
+      strategySets.push({
+        label: strategyId,
+        strategies: [strategyId]
+      });
+    });
+
+    setBacktestComparisonLoading(true);
+
+    try {
+      const response = await compareBacktests({
+        ...backtestForm,
+        strategySets
+      });
+      setBacktestComparisons(response.comparisons || []);
+      const runsResponse = await fetchBacktestRuns({ limit: 10, pair: backtestForm.pair });
+      setBacktestRuns(runsResponse.runs || []);
+      setError("");
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message);
+    } finally {
+      setBacktestComparisonLoading(false);
+    }
+  };
+
+  const handleRunBacktestExperiments = async () => {
+    const selectedStrategies = Array.isArray(backtestForm.activeStrategies) ? backtestForm.activeStrategies : [];
+
+    if (selectedStrategies.length === 0) {
+      setError("Select at least one strategy to run experiments.");
+      return;
+    }
+
+    setBacktestExperimentLoading(true);
+
+    try {
+      const response = await runBacktestExperiments({
+        ...backtestForm,
+        strategyIds: selectedStrategies,
+        maxCombinationSize: Number(backtestForm.maxCombinationSize || 2)
+      });
+      setBacktestExperiments(response.comparisons || []);
+      const runsResponse = await fetchBacktestRuns({ limit: 10, pair: backtestForm.pair });
+      setBacktestRuns(runsResponse.runs || []);
+      setError("");
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message);
+    } finally {
+      setBacktestExperimentLoading(false);
+    }
+  };
+
+  const handleSelectBacktestRun = async (runId) => {
+    setBacktestRunsLoading(true);
+
+    try {
+      const response = await fetchBacktestRun(runId);
+      setSelectedBacktestRun(response.run || null);
+      setError("");
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message);
+    } finally {
+      setBacktestRunsLoading(false);
     }
   };
 
@@ -293,7 +432,8 @@ function Dashboard() {
         scoreThreshold: Number(settingsForm.scoreThreshold),
         riskPerTrade: Number(settingsForm.riskPerTrade),
         compoundRatio: Number(settingsForm.compoundRatio),
-        tradingPairs: settingsForm.tradingPairs.split(",").map((pair) => pair.trim()).filter(Boolean)
+        tradingPairs: settingsForm.tradingPairs.split(",").map((pair) => pair.trim()).filter(Boolean),
+        activeStrategies: settingsForm.activeStrategies
       });
 
       setSettings(response.settings || null);
@@ -302,6 +442,61 @@ function Dashboard() {
       setError(requestError.response?.data?.message || requestError.message);
     } finally {
       setSettingsSaving(false);
+    }
+  };
+
+  const handleFavoriteBacktestRun = async (runId, isFavorite, favoriteLabel = "") => {
+    try {
+      await favoriteBacktestRun(runId, {
+        isFavorite,
+        favoriteLabel
+      });
+      const [runsResponse, selectedRunResponse] = await Promise.all([
+        fetchBacktestRuns({ limit: 10, pair: backtestForm.pair }),
+        fetchBacktestRun(runId)
+      ]);
+      setBacktestRuns(runsResponse.runs || []);
+      setSelectedBacktestRun(selectedRunResponse.run || null);
+      setError("");
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message);
+    }
+  };
+
+  const handlePromoteBacktestRun = async (runId, slot = "champion") => {
+    try {
+      const response = await promoteBacktestRun(runId, { slot });
+      setSettings(response.settings || null);
+      setSettingsForm((current) => ({
+        ...current,
+        tradingMode: response.settings?.tradingMode || current.tradingMode,
+        activeStrategies: response.settings?.activeStrategies || current.activeStrategies,
+        championRunId: response.settings?.championRunId ?? current.championRunId,
+        challengerRunId: response.settings?.challengerRunId ?? current.challengerRunId
+      }));
+      const [runsResponse, selectedRunResponse] = await Promise.all([
+        fetchBacktestRuns({ limit: 10, pair: backtestForm.pair }),
+        fetchBacktestRun(runId)
+      ]);
+      setBacktestRuns(runsResponse.runs || []);
+      setSelectedBacktestRun(selectedRunResponse.run || null);
+      setError("");
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message);
+    }
+  };
+
+  const handleApproveBacktestRunLive = async (runId) => {
+    try {
+      const response = await approveBacktestRunLive(runId);
+      setSettings(response.settings || null);
+      setSettingsForm((current) => ({
+        ...current,
+        tradingMode: response.settings?.tradingMode || current.tradingMode
+      }));
+      setError("");
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message);
     }
   };
 
@@ -488,7 +683,21 @@ function Dashboard() {
               onRun={handleBacktest}
               loading={backtestLoading}
               result={backtestResult}
-            />
+              strategies={availableBacktestStrategies}
+              runs={backtestRuns}
+              selectedRun={selectedBacktestRun}
+              onSelectRun={handleSelectBacktestRun}
+              runsLoading={backtestRunsLoading}
+              comparisons={backtestComparisons}
+              comparisonLoading={backtestComparisonLoading}
+              onCompare={handleCompareBacktests}
+              experiments={backtestExperiments}
+                experimentLoading={backtestExperimentLoading}
+                onRunExperiments={handleRunBacktestExperiments}
+                onFavoriteRun={handleFavoriteBacktestRun}
+                onPromoteRun={handlePromoteBacktestRun}
+                onApproveLive={handleApproveBacktestRunLive}
+              />
           ) : null}
 
           {activeTab === "settings" ? (
@@ -498,6 +707,7 @@ function Dashboard() {
               onChange={(field, value) => setSettingsForm((current) => ({ ...current, [field]: value }))}
               onSave={handleSaveSettings}
               saving={settingsSaving}
+              strategies={availableBacktestStrategies}
             />
           ) : null}
         </div>

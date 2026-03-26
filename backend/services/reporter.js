@@ -82,6 +82,19 @@ function summarizeTrades(trades = []) {
   };
 }
 
+function getTradeMode(trade = {}) {
+  if (trade.metadata && typeof trade.metadata === "object") {
+    return String(trade.metadata.tradingMode || "").toUpperCase();
+  }
+
+  try {
+    const metadata = typeof trade.metadata === "string" ? JSON.parse(trade.metadata) : {};
+    return String(metadata.tradingMode || "").toUpperCase();
+  } catch (_error) {
+    return "";
+  }
+}
+
 function analyzeIndicatorEffectiveness(trades = []) {
   const winningTrades = trades.filter((trade) => Number(trade.result_pnl || 0) > 0);
   const counters = {};
@@ -145,6 +158,8 @@ class ReporterService {
   async generateReport(type, referenceDate = new Date()) {
     const { bounds, trades, capitalRows } = await this.getClosedTradesForPeriod(type, referenceDate);
     const summary = summarizeTrades(trades);
+    const paperSummary = summarizeTrades(trades.filter((trade) => getTradeMode(trade) === "PAPER"));
+    const liveSummary = summarizeTrades(trades.filter((trade) => getTradeMode(trade) === "LIVE"));
     const period = formatPeriod(type, bounds.start);
     const reportData = {
       type,
@@ -152,6 +167,10 @@ class ReporterService {
       start: bounds.start.toISOString(),
       end: bounds.end.toISOString(),
       summary,
+      modeBreakdown: {
+        paper: paperSummary,
+        live: liveSummary
+      },
       capitalChange: capitalRows.length >= 2
         ? Number(capitalRows[capitalRows.length - 1].capital_value) - Number(capitalRows[0].capital_value)
         : 0,
@@ -176,7 +195,15 @@ class ReporterService {
     await telegramService.notifyReport({
       type,
       period,
-      summary: this.buildSummaryText(type, summary)
+      summary: this.buildSummaryText(type, summary),
+      paperSummary:
+        paperSummary.tradeCount > 0
+          ? `Paper mode: ${paperSummary.tradeCount} trades, ${paperSummary.winRate.toFixed(2)}% win rate, PnL ${paperSummary.totalPnl.toFixed(4)}`
+          : null,
+      liveSummary:
+        liveSummary.tradeCount > 0
+          ? `Live mode: ${liveSummary.tradeCount} trades, ${liveSummary.winRate.toFixed(2)}% win rate, PnL ${liveSummary.totalPnl.toFixed(4)}`
+          : null
     });
 
     return savedReport;

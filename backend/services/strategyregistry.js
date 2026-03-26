@@ -22,13 +22,27 @@ class StrategyRegistry {
       .map((item) => item.trim())
       .filter(Boolean);
 
-    if (configured.length === 0) {
+    return this.getStrategies(configured);
+  }
+
+  getStrategies(strategyIds = []) {
+    if (!Array.isArray(strategyIds) || strategyIds.length === 0) {
       return [...this.strategies.values()];
     }
 
-    return configured
+    return strategyIds
       .map((strategyId) => this.strategies.get(strategyId))
       .filter(Boolean);
+  }
+
+  listStrategies() {
+    const activeIds = new Set(this.getActiveStrategies().map((strategy) => strategy.id));
+
+    return [...this.strategies.values()].map((strategy) => ({
+      id: strategy.id,
+      description: strategy.description,
+      activeByDefault: activeIds.has(strategy.id)
+    }));
   }
 }
 

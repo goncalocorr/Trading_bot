@@ -88,7 +88,9 @@ class TelegramService {
     return [
       `${String(report.type || "report").toUpperCase()} report`,
       `Period: ${report.period || "n/a"}`,
-      report.summary || null
+      report.summary || null,
+      report.paperSummary || null,
+      report.liveSummary || null
     ]
       .filter(Boolean)
       .join("\n");
@@ -112,6 +114,49 @@ class TelegramService {
       `Market regime: ${payload.diagnostics?.marketState?.isSideways ? "sideways" : "tradeable"}`,
       `Fear & Greed: ${payload.diagnostics?.fearGreed?.classification || "n/a"}`,
       timeframeSummary
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  formatStrategyDegradationMessage(payload = {}) {
+    return [
+      "Strategy degradation alert",
+      `Strategy: ${payload.strategyId || "unknown"}`,
+      `Trades reviewed: ${payload.tradeCount || 0}`,
+      `Win rate: ${Number(payload.winRate || 0).toFixed(2)}%`,
+      `Total PnL: ${Number(payload.pnlTotal || 0).toFixed(4)}`,
+      payload.reason || null
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  formatPaperValidationUpdate(payload = {}) {
+    return [
+      payload.title || "Paper validation update",
+      payload.slot ? `Slot: ${payload.slot}` : null,
+      payload.action ? `Action: ${payload.action}` : null,
+      payload.runId ? `Run: #${payload.runId}` : null,
+      payload.reason || null,
+      payload.performance
+        ? `Trades: ${payload.performance.tradeCount || 0} | Win rate: ${Number(payload.performance.winRate || 0).toFixed(2)}% | PnL: ${Number(payload.performance.pnlTotal || 0).toFixed(4)}`
+        : null
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  formatPaperValidationRecommendation(payload = {}) {
+    return [
+      payload.title || "Paper recommendation",
+      payload.championRunId ? `Champion: #${payload.championRunId}` : "Champion: none",
+      payload.challengerRunId ? `Challenger: #${payload.challengerRunId}` : null,
+      payload.recommendation?.action ? `Recommendation: ${payload.recommendation.action}` : null,
+      payload.recommendation?.reason || null,
+      payload.headToHead
+        ? `PnL delta: ${Number(payload.headToHead.pnlDelta || 0).toFixed(4)} | Win rate delta: ${Number(payload.headToHead.winRateDelta || 0).toFixed(2)}%`
+        : null
     ]
       .filter(Boolean)
       .join("\n");
@@ -169,6 +214,18 @@ class TelegramService {
 
   async notifySignalReadiness(payload) {
     return this.sendMessage(this.formatSignalReadinessMessage(payload));
+  }
+
+  async notifyStrategyDegradation(payload) {
+    return this.sendMessage(this.formatStrategyDegradationMessage(payload));
+  }
+
+  async notifyPaperValidationUpdate(payload) {
+    return this.sendMessage(this.formatPaperValidationUpdate(payload));
+  }
+
+  async notifyPaperValidationRecommendation(payload) {
+    return this.sendMessage(this.formatPaperValidationRecommendation(payload));
   }
 }
 
