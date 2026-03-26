@@ -1,0 +1,509 @@
+import { useEffect, useMemo, useState } from "react";
+import ActiveTrades from "./ActiveTrades";
+import Backtest from "./Backtest";
+import CapitalChart from "./CapitalChart";
+import SignalDebugPanel from "./SignalDebugPanel";
+import SettingsPanel from "./SettingsPanel";
+import StatsPanel from "./StatsPanel";
+import TradeHistory from "./TradeHistory";
+import {
+  cancelTrade,
+  fetchCapitalHistory,
+  fetchDashboard,
+  fetchSignalDebug,
+  fetchSettings,
+  fetchTrades,
+  runBacktest,
+  triggerManualTrade,
+  updateSettings
+} from "../lib/api";
+
+const tabs = [
+  { id: "overview", label: "Overview" },
+  { id: "history", label: "History" },
+  { id: "backtest", label: "Backtest" },
+  { id: "settings", label: "Settings" }
+];
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2
+  }).format(Number(value || 0));
+}
+
+function buildManualSignalFeedback(result = {}) {
+  if (!result) {
+    return null;
+  }
+
+  if (result.ok && result.action === "trade_opened") {
+    return {
+      tone: "success",
+      message: `Trade opened successfully for ${result.trade?.pair || "the selected pair"}.`
+    };
+  }
+
+  if (result.ok && result.action === "all_positions_closed") {
+    return {
+      tone: "success",
+      message: `Closed ${result.closedCount || 0} open position(s) for the selected pair.`
+    };
+  }
+
+  if (result.action === "blocked") {
+    return {
+      tone: "warning",
+      message: result.reason || "Manual signal was blocked by the strategy rules."
+    };
+  }
+
+  if (result.action === "missed_opportunity") {
+    return {
+      tone: "info",
+      message: result.reason || "Signal was logged as a missed opportunity."
+    };
+  }
+
+  if (result.action === "ignored") {
+    return {
+      tone: "info",
+      message: result.reason || "Signal was ignored by the scoring system."
+    };
+  }
+
+  if (result.action === "spot_sell_skipped") {
+    return {
+      tone: "info",
+      message: result.reason || "No open spot position was available to close."
+    };
+  }
+
+  return {
+    tone: result.ok ? "success" : "warning",
+    message: result.reason || "Manual signal processed."
+  };
+}
+
+function Dashboard() {
+  const [activeTab, setActiveTab] = useState("overview");
+  const [dashboardData, setDashboardData] = useState(null);
+  const [capitalHistory, setCapitalHistory] = useState([]);
+  const [signalDebug, setSignalDebug] = useState(null);
+  const [historyRange, setHistoryRange] = useState("ALL");
+  const [tradeHistory, setTradeHistory] = useState([]);
+  const [tradeFilters, setTradeFilters] = useState({
+    pair: "",
+    side: "",
+    status: "",
+    dateFrom: "",
+    dateTo: ""
+  });
+  const [manualSignal, setManualSignal] = useState({
+    pair: "BTCUSDT",
+    side: "BUY"
+  });
+  const [backtestForm, setBacktestForm] = useState({
+    pair: "BTCUSDT",
+    dateFrom: "",
+    dateTo: "",
+    timeframe: "15m"
+  });
+  const [backtestResult, setBacktestResult] = useState(null);
+  const [settings, setSettings] = useState(null);
+  const [settingsForm, setSettingsForm] = useState({
+    botEnabled: true,
+    tradingMode: "paper",
+    scoreThreshold: 8,
+    riskPerTrade: 0.01,
+    compoundRatio: 0.5,
+    tradingPairs: "BTCUSDT"
+  });
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [backtestLoading, setBacktestLoading] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [signalDebugLoading, setSignalDebugLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [manualFeedback, setManualFeedback] = useState(null);
+
+  const headlineCards = useMemo(() => {
+    const capital = dashboardData?.capital || {};
+
+    return [
+      { label: "Current Capital", value: formatCurrency(capital.current), accent: "text-amber-300" },
+      { label: "Realized Profit", value: formatCurrency(capital.realizedProfit), accent: "text-emerald-300" },
+      { label: "Unrealized P&L", value: formatCurrency(capital.unrealizedPnl), accent: "text-sky-300" },
+      { label: "Bot Status", value: dashboardData?.botStatus || "Loading", accent: "text-white" }
+    ];
+  }, [dashboardData]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoadingDashboard(true);
+        const [dashboardResponse, historyResponse, tradesResponse, settingsResponse] = await Promise.all([
+          fetchDashboard(),
+          fetchCapitalHistory(historyRange),
+          fetchTrades(),
+          fetchSettings()
+        ]);
+
+        setDashboardData(dashboardResponse);
+        setCapitalHistory(historyResponse.history || []);
+        setTradeHistory(tradesResponse.trades || []);
+        setSettings(settingsResponse.settings || null);
+        setSettingsForm({
+          botEnabled: settingsResponse.settings?.botEnabled ?? true,
+          tradingMode: settingsResponse.settings?.tradingMode ?? "paper",
+          scoreThreshold: settingsResponse.settings?.scoreThreshold ?? 8,
+          riskPerTrade: settingsResponse.settings?.riskPerTrade ?? 0.01,
+          compoundRatio: settingsResponse.settings?.compoundRatio ?? 0.5,
+          tradingPairs: (settingsResponse.settings?.tradingPairs || ["BTCUSDT"]).join(",")
+        });
+        setError("");
+        setManualFeedback(null);
+      } catch (requestError) {
+        setError(requestError.response?.data?.message || requestError.message);
+      } finally {
+        setLoadingDashboard(false);
+      }
+    };
+
+    load();
+    const intervalId = window.setInterval(load, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, [historyRange]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadSignalDebug = async () => {
+      try {
+        setSignalDebugLoading(true);
+        const response = await fetchSignalDebug(manualSignal.pair, manualSignal.side);
+
+        if (active) {
+          setSignalDebug(response.debug || null);
+        }
+      } catch (_requestError) {
+        if (active) {
+          setSignalDebug(null);
+        }
+      } finally {
+        if (active) {
+          setSignalDebugLoading(false);
+        }
+      }
+    };
+
+    loadSignalDebug();
+
+    return () => {
+      active = false;
+    };
+  }, [manualSignal.pair, manualSignal.side]);
+
+  const refreshTradeHistory = async () => {
+    const response = await fetchTrades({
+      pair: tradeFilters.pair || undefined,
+      side: tradeFilters.side || undefined,
+      status: tradeFilters.status || undefined,
+      dateFrom: tradeFilters.dateFrom || undefined,
+      dateTo: tradeFilters.dateTo || undefined
+    });
+
+    setTradeHistory(response.trades || []);
+  };
+
+  const handleRangeChange = async (nextRange) => {
+    setHistoryRange(nextRange);
+    setLoadingHistory(true);
+
+    try {
+      const response = await fetchCapitalHistory(nextRange);
+      setCapitalHistory(response.history || []);
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const handleManualTrigger = async () => {
+    setActionLoading(true);
+
+    try {
+      const response = await triggerManualTrade(manualSignal);
+      const dashboardResponse = await fetchDashboard();
+      const debugResponse = await fetchSignalDebug(manualSignal.pair, manualSignal.side);
+      setDashboardData(dashboardResponse);
+      setSignalDebug(debugResponse.debug || null);
+      await refreshTradeHistory();
+      setError("");
+      setManualFeedback(buildManualSignalFeedback(response.result));
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message);
+      setManualFeedback(null);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCancelTrade = async (id) => {
+    setActionLoading(true);
+
+    try {
+      await cancelTrade(id);
+      const dashboardResponse = await fetchDashboard();
+      setDashboardData(dashboardResponse);
+      await refreshTradeHistory();
+      setError("");
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleBacktest = async () => {
+    setBacktestLoading(true);
+
+    try {
+      const response = await runBacktest(backtestForm);
+      setBacktestResult(response.result || null);
+      setError("");
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message);
+    } finally {
+      setBacktestLoading(false);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    setSettingsSaving(true);
+
+    try {
+      const response = await updateSettings({
+        botEnabled: settingsForm.botEnabled,
+        tradingMode: settingsForm.tradingMode,
+        scoreThreshold: Number(settingsForm.scoreThreshold),
+        riskPerTrade: Number(settingsForm.riskPerTrade),
+        compoundRatio: Number(settingsForm.compoundRatio),
+        tradingPairs: settingsForm.tradingPairs.split(",").map((pair) => pair.trim()).filter(Boolean)
+      });
+
+      setSettings(response.settings || null);
+      setError("");
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message);
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  return (
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.18),_transparent_30%),linear-gradient(135deg,_#020617_0%,_#111827_45%,_#1e293b_100%)] text-slate-100">
+      <div className="mx-auto max-w-7xl px-6 py-10">
+        <header className="rounded-[32px] border border-white/10 bg-slate-950/55 p-7 shadow-2xl shadow-black/20 backdrop-blur">
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <span className="inline-flex rounded-full border border-amber-300/20 bg-amber-300/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.26em] text-amber-200">
+                Binance Spot Control Room
+              </span>
+              <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+                Passive crypto bot dashboard with live risk context, scoring, and execution controls.
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+                Designed for cautious capital deployment, transparent scoring, and fast intervention when market conditions shift.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:w-[420px]">
+              {headlineCards.map((card) => (
+                <div key={card.label} className="rounded-[24px] border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{card.label}</p>
+                  <p className={`mt-2 text-xl font-semibold ${card.accent}`}>{card.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </header>
+
+        {error ? (
+          <div className="mt-6 rounded-[24px] border border-rose-400/25 bg-rose-500/10 px-5 py-4 text-sm text-rose-100">
+            {error}
+          </div>
+        ) : null}
+
+        {manualFeedback ? (
+          <div
+            className={`mt-6 rounded-[24px] px-5 py-4 text-sm ${
+              manualFeedback.tone === "success"
+                ? "border border-emerald-400/25 bg-emerald-500/10 text-emerald-100"
+                : manualFeedback.tone === "warning"
+                  ? "border border-amber-400/25 bg-amber-500/10 text-amber-100"
+                  : "border border-sky-400/25 bg-sky-500/10 text-sky-100"
+            }`}
+          >
+            {manualFeedback.message}
+          </div>
+        ) : null}
+
+        <section className="mt-6 flex flex-col gap-4 rounded-[28px] border border-white/10 bg-slate-950/45 p-5 backdrop-blur xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  activeTab === tab.id
+                    ? "bg-white text-slate-950"
+                    : "border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-[1fr_160px_auto]">
+            <input
+              value={manualSignal.pair}
+              onChange={(event) => setManualSignal((current) => ({ ...current, pair: event.target.value.toUpperCase() }))}
+              className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none"
+              placeholder="BTCUSDT"
+            />
+            <select
+              value={manualSignal.side}
+              onChange={(event) => setManualSignal((current) => ({ ...current, side: event.target.value }))}
+              className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none"
+            >
+              <option value="BUY">BUY</option>
+              <option value="SELL">SELL</option>
+            </select>
+            <button
+              type="button"
+              onClick={handleManualTrigger}
+              disabled={actionLoading}
+              className="rounded-2xl bg-amber-300 px-5 py-3 text-sm font-semibold text-slate-900 transition hover:bg-amber-200 disabled:opacity-50"
+            >
+              {actionLoading ? "Submitting..." : "Manual signal"}
+            </button>
+          </div>
+        </section>
+
+        <div className="mt-6 space-y-6">
+          {activeTab === "overview" ? (
+            <>
+              <CapitalChart
+                data={capitalHistory}
+                range={historyRange}
+                onRangeChange={handleRangeChange}
+                loading={loadingDashboard || loadingHistory}
+              />
+              <SignalDebugPanel debug={signalDebug} loading={signalDebugLoading} />
+              <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+                <ActiveTrades
+                  trades={dashboardData?.activeTrades || []}
+                  onCancel={handleCancelTrade}
+                  actionLoading={actionLoading}
+                />
+                <StatsPanel stats={dashboardData?.stats || {}} />
+              </div>
+              <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
+                <div className="mb-5">
+                  <h2 className="text-xl font-semibold text-white">Latest Trades</h2>
+                  <p className="mt-1 text-sm text-slate-300">
+                    The most recent executions and closures returned by the backend snapshot.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  {(dashboardData?.latestTrades || []).length === 0 ? (
+                    <div className="rounded-[22px] border border-dashed border-white/10 bg-slate-950/40 p-8 text-sm text-slate-400">
+                      No recent trades available yet.
+                    </div>
+                  ) : (
+                    (dashboardData?.latestTrades || []).map((trade) => (
+                      <article
+                        key={trade.id}
+                        className="grid gap-3 rounded-[22px] border border-white/10 bg-slate-950/45 p-4 md:grid-cols-6"
+                      >
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Pair</p>
+                          <p className="mt-2 text-sm font-semibold text-white">{trade.pair}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Strategy</p>
+                          <p className="mt-2 text-sm font-semibold text-white">
+                            {trade.metadata?.strategyId || trade.metadata?.strategy || "manual"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Side</p>
+                          <p className="mt-2 text-sm font-semibold text-white">{trade.side}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p>
+                          <p className="mt-2 text-sm font-semibold text-white">{trade.status}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">PnL</p>
+                          <p className={`mt-2 text-sm font-semibold ${Number(trade.result_pnl || 0) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                            {formatCurrency(trade.result_pnl || 0)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Opened</p>
+                          <p className="mt-2 text-sm font-semibold text-white">
+                            {trade.opened_at ? new Date(trade.opened_at).toLocaleString() : "n/a"}
+                          </p>
+                        </div>
+                      </article>
+                    ))
+                  )}
+                </div>
+              </section>
+            </>
+          ) : null}
+
+          {activeTab === "history" ? (
+            <TradeHistory
+              trades={tradeHistory}
+              filters={tradeFilters}
+              onFilterChange={(field, value) => setTradeFilters((current) => ({ ...current, [field]: value }))}
+              onApplyFilters={refreshTradeHistory}
+            />
+          ) : null}
+
+          {activeTab === "backtest" ? (
+            <Backtest
+              form={backtestForm}
+              onChange={(field, value) => setBacktestForm((current) => ({ ...current, [field]: value }))}
+              onRun={handleBacktest}
+              loading={backtestLoading}
+              result={backtestResult}
+            />
+          ) : null}
+
+          {activeTab === "settings" ? (
+            <SettingsPanel
+              settings={settings}
+              form={settingsForm}
+              onChange={(field, value) => setSettingsForm((current) => ({ ...current, [field]: value }))}
+              onSave={handleSaveSettings}
+              saving={settingsSaving}
+            />
+          ) : null}
+        </div>
+      </div>
+    </main>
+  );
+}
+
+export default Dashboard;

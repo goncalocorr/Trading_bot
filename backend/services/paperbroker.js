@@ -1,0 +1,455 @@
+const fs = require("fs");
+const path = require("path");
+
+const binanceService = require("./binance");
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const PAPER_STATE_DIR = path.join(__dirname, "..", "data");
+const PAPER_STATE_PATH = path.join(PAPER_STATE_DIR, "paper-broker-state.json");
+
+class PaperBroker {
+  constructor() {
+    this.nextOrderId = Date.now();
+    this.nextOrderListId = Date.now();
+    this.orders = new Map();
+    this.orderLists = new Map();
+    this.tradeHistory = [];
+    this.loadState();
+  }
+
+  generateOrderId() {
+    this.nextOrderId += 1;
+    return this.nextOrderId;
+  }
+
+  generateOrderListId() {
+    this.nextOrderListId += 1;
+    return this.nextOrderListId;
+  }
+
+  ensureStateDirectory() {
+    fs.mkdirSync(PAPER_STATE_DIR, { recursive: true });
+  }
+
+  serializeState() {
+    return {
+      nextOrderId: this.nextOrderId,
+      nextOrderListId: this.nextOrderListId,
+      orders: [...this.orders.values()],
+      orderLists: [...this.orderLists.values()],
+      tradeHistory: this.tradeHistory
+    };
+  }
+
+  persistState() {
+    this.ensureStateDirectory();
+    fs.writeFileSync(PAPER_STATE_PATH, JSON.stringify(this.serializeState(), null, 2));
+  }
+
+  loadState() {
+    try {
+      if (!fs.existsSync(PAPER_STATE_PATH)) {
+        return;
+      }
+
+      const rawState = fs.readFileSync(PAPER_STATE_PATH, "utf8");
+      const parsedState = JSON.parse(rawState);
+
+      this.nextOrderId = Number(parsedState.nextOrderId || this.nextOrderId);
+      this.nextOrderListId = Number(parsedState.nextOrderListId || this.nextOrderListId);
+      this.orders = new Map(
+        (Array.isArray(parsedState.orders) ? parsedState.orders : []).map((order) => [Number(order.orderId), order])
+      );
+      this.orderLists = new Map(
+        (Array.isArray(parsedState.orderLists) ? parsedState.orderLists : []).map((orderList) => [
+          Number(orderList.orderListId),
+          orderList
+        ])
+      );
+      this.tradeHistory = Array.isArray(parsedState.tradeHistory) ? parsedState.tradeHistory : [];
+    } catch (error) {
+      console.warn(`Paper broker state could not be restored: ${error.message}`);
+      this.nextOrderId = Date.now();
+      this.nextOrderListId = Date.now();
+      this.orders = new Map();
+      this.orderLists = new Map();
+      this.tradeHistory = [];
+    }
+  }
+
+  async getBestBookTicker(symbol) {
+    await this.syncSymbol(symbol);
+    return binanceService.getBestBookTicker(symbol);
+  }
+
+  async getSymbolPrice(symbol) {
+    await this.syncSymbol(symbol);
+    return binanceService.getSymbolPrice(symbol);
+  }
+
+  async getOpenOrders(symbol) {
+    await this.syncSymbol(symbol);
+    const normalizedSymbol = symbol ? symbol.toUpperCase() : null;
+    const regularOrders = [...this.orders.values()].filter((order) => {
+      const openStatus = ["NEW", "PARTIALLY_FILLED"].includes(order.status);
+      const symbolMatches = normalizedSymbol ? order.symbol === normalizedSymbol : true;
+      return openStatus && symbolMatches;
+    });
+    const ocoOrders = [...this.orderLists.values()].filter((orderList) => {
+      const symbolMatches = normalizedSymbol ? orderList.symbol === normalizedSymbol : true;
+      return orderList.status === "EXECUTING" && symbolMatches;
+    });
+
+    return [
+      ...regularOrders.map((order) => ({ ...order })),
+      ...ocoOrders.map((orderList) => ({
+        symbol: orderList.symbol,
+        orderListId: orderList.orderListId,
+        contingencyType: "OCO",
+        side: orderList.side,
+        price: String(orderList.price),
+        stopPrice: String(orderList.stopPrice),
+        origQty: String(orderList.origQty),
+        executedQty: "0.00000000",
+        status: orderList.status,
+        type: "OCO",
+        transactTime: orderList.transactTime
+      }))
+    ];
+  }
+
+  async getOrder(symbol, orderId) {
+    await this.syncSymbol(symbol);
+    const order = this.orders.get(Number(orderId));
+
+    if (!order || order.symbol !== String(symbol).toUpperCase()) {
+      throw new Error(`Paper order not found: ${orderId}`);
+    }
+
+    return { ...order };
+  }
+
+  async getMyTrades(symbol, options = {}) {
+    await this.syncSymbol(symbol);
+    const normalizedSymbol = String(symbol).toUpperCase();
+
+    return this.tradeHistory.filter((trade) => {
+      if (trade.symbol !== normalizedSymbol) {
+        return false;
+      }
+
+      if (options.startTime && Number(trade.time) < Number(options.startTime)) {
+        return false;
+      }
+
+      if (options.endTime && Number(trade.time) > Number(options.endTime)) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
+  async placeMarketOrder({ symbol, side, quantity, newClientOrderId }) {
+    const normalizedSymbol = String(symbol).toUpperCase();
+    const normalizedSide = String(side).toUpperCase();
+    const ticker = await binanceService.getBestBookTicker(normalizedSymbol);
+    const executionPrice =
+      normalizedSide === "BUY" ? Number(ticker.askPrice || ticker.bidPrice) : Number(ticker.bidPrice || ticker.askPrice);
+    const orderId = this.generateOrderId();
+    const order = {
+      symbol: normalizedSymbol,
+      orderId,
+      clientOrderId: newClientOrderId || `paper-market-${orderId}`,
+      price: String(executionPrice),
+      origQty: String(quantity),
+      executedQty: String(quantity),
+      cummulativeQuoteQty: String(Number(quantity) * executionPrice),
+      status: "FILLED",
+      timeInForce: "GTC",
+      type: "MARKET",
+      side: normalizedSide,
+      transactTime: Date.now(),
+      fills: [
+        {
+          price: String(executionPrice),
+          qty: String(quantity),
+          commission: "0",
+          commissionAsset: "USDT"
+        }
+      ]
+    };
+
+    this.orders.set(orderId, order);
+    this.recordTradeFill(order, executionPrice, quantity);
+    this.persistState();
+
+    return { ...order };
+  }
+
+  async placeLimitOrder({ symbol, side, quantity, price, timeInForce = "GTC", newClientOrderId }) {
+    const normalizedSymbol = String(symbol).toUpperCase();
+    const normalizedSide = String(side).toUpperCase();
+    const orderId = this.generateOrderId();
+    const order = {
+      symbol: normalizedSymbol,
+      orderId,
+      clientOrderId: newClientOrderId || `paper-limit-${orderId}`,
+      price: String(price),
+      origQty: String(quantity),
+      executedQty: "0",
+      cummulativeQuoteQty: "0",
+      status: "NEW",
+      timeInForce,
+      type: "LIMIT",
+      side: normalizedSide,
+      transactTime: Date.now(),
+      fills: []
+    };
+
+    this.orders.set(orderId, order);
+    await this.tryFillLimitOrder(order);
+    this.persistState();
+    return { ...this.orders.get(orderId) };
+  }
+
+  async placeOcoOrder({
+    symbol,
+    side,
+    quantity,
+    price,
+    stopPrice,
+    stopLimitPrice,
+    listClientOrderId
+  }) {
+    const normalizedSymbol = String(symbol).toUpperCase();
+    const normalizedSide = String(side).toUpperCase();
+    const orderListId = this.generateOrderListId();
+    const orderList = {
+      symbol: normalizedSymbol,
+      orderListId,
+      listClientOrderId: listClientOrderId || `paper-oco-${orderListId}`,
+      contingencyType: "OCO",
+      side: normalizedSide,
+      origQty: Number(quantity),
+      price: Number(price),
+      stopPrice: Number(stopPrice),
+      stopLimitPrice: Number(stopLimitPrice || stopPrice),
+      status: "EXECUTING",
+      transactTime: Date.now()
+    };
+
+    this.orderLists.set(orderListId, orderList);
+    this.persistState();
+    return { ...orderList };
+  }
+
+  async cancelOrder(symbol, orderId) {
+    const order = await this.getOrder(symbol, orderId);
+
+    if (!["NEW", "PARTIALLY_FILLED"].includes(order.status)) {
+      return order;
+    }
+
+    const updated = {
+      ...order,
+      status: "CANCELED"
+    };
+    this.orders.set(Number(orderId), updated);
+    this.persistState();
+    return { ...updated };
+  }
+
+  async cancelAllOpenOrders(symbol) {
+    await this.syncSymbol(symbol);
+    const normalizedSymbol = String(symbol).toUpperCase();
+    const cancelled = [];
+
+    for (const order of this.orders.values()) {
+      if (order.symbol !== normalizedSymbol || !["NEW", "PARTIALLY_FILLED"].includes(order.status)) {
+        continue;
+      }
+
+      const updated = {
+        ...order,
+        status: "CANCELED"
+      };
+      this.orders.set(order.orderId, updated);
+      cancelled.push({ ...updated });
+    }
+
+    for (const orderList of this.orderLists.values()) {
+      if (orderList.symbol !== normalizedSymbol || orderList.status !== "EXECUTING") {
+        continue;
+      }
+
+      orderList.status = "ALL_DONE";
+      cancelled.push({ ...orderList });
+    }
+
+    this.persistState();
+    return cancelled;
+  }
+
+  async cancelOrderList(symbol, orderListId) {
+    await this.syncSymbol(symbol);
+    const orderList = this.orderLists.get(Number(orderListId));
+
+    if (!orderList || orderList.symbol !== String(symbol).toUpperCase()) {
+      throw new Error(`Paper OCO order list not found: ${orderListId}`);
+    }
+
+    orderList.status = "ALL_DONE";
+    this.orderLists.set(Number(orderListId), orderList);
+    this.persistState();
+    return { ...orderList };
+  }
+
+  async closeSpotPositionAtMarket({ symbol, quantity, side = "SELL", newClientOrderId }) {
+    return this.placeMarketOrder({
+      symbol,
+      side,
+      quantity,
+      newClientOrderId
+    });
+  }
+
+  async waitForOrderFill(symbol, orderId, { timeoutMs = 300000, pollIntervalMs = 5000 } = {}) {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const order = await this.getOrder(symbol, orderId);
+
+      if (order.status === "FILLED") {
+        return order;
+      }
+
+      if (["CANCELED", "REJECTED", "EXPIRED"].includes(order.status)) {
+        return order;
+      }
+
+      await sleep(pollIntervalMs);
+    }
+
+    return this.getOrder(symbol, orderId);
+  }
+
+  async syncSymbol(symbol) {
+    const normalizedSymbol = String(symbol).toUpperCase();
+    const ticker = await binanceService.getBestBookTicker(normalizedSymbol);
+    const bidPrice = Number(ticker.bidPrice || ticker.askPrice || 0);
+    const askPrice = Number(ticker.askPrice || ticker.bidPrice || 0);
+
+    for (const order of [...this.orders.values()]) {
+      if (order.symbol !== normalizedSymbol || order.status !== "NEW" || order.type !== "LIMIT") {
+        continue;
+      }
+
+      if (this.shouldFillLimitOrder(order, bidPrice, askPrice)) {
+        this.fillOrder(order, Number(order.price), Number(order.origQty));
+      }
+    }
+
+    for (const orderList of [...this.orderLists.values()]) {
+      if (orderList.symbol !== normalizedSymbol || orderList.status !== "EXECUTING") {
+        continue;
+      }
+
+      if (orderList.side === "SELL" && bidPrice >= orderList.price) {
+        this.fillOrderList(orderList, orderList.price);
+        continue;
+      }
+
+      if (orderList.side === "SELL" && bidPrice <= orderList.stopPrice) {
+        this.fillOrderList(orderList, orderList.stopPrice);
+      }
+    }
+  }
+
+  shouldFillLimitOrder(order, bidPrice, askPrice) {
+    const orderPrice = Number(order.price);
+
+    if (order.side === "BUY") {
+      return askPrice <= orderPrice;
+    }
+
+    return bidPrice >= orderPrice;
+  }
+
+  async tryFillLimitOrder(order) {
+    const ticker = await binanceService.getBestBookTicker(order.symbol);
+    const bidPrice = Number(ticker.bidPrice || ticker.askPrice || 0);
+    const askPrice = Number(ticker.askPrice || ticker.bidPrice || 0);
+
+    if (this.shouldFillLimitOrder(order, bidPrice, askPrice)) {
+      this.fillOrder(order, Number(order.price), Number(order.origQty));
+    }
+  }
+
+  fillOrder(order, executionPrice, quantity) {
+    const updated = {
+      ...order,
+      status: "FILLED",
+      executedQty: String(quantity),
+      cummulativeQuoteQty: String(Number(quantity) * executionPrice),
+      transactTime: Date.now(),
+      fills: [
+        {
+          price: String(executionPrice),
+          qty: String(quantity),
+          commission: "0",
+          commissionAsset: "USDT"
+        }
+      ]
+    };
+
+    this.orders.set(order.orderId, updated);
+    this.recordTradeFill(updated, executionPrice, quantity);
+    this.persistState();
+  }
+
+  fillOrderList(orderList, executionPrice) {
+    orderList.status = "ALL_DONE";
+    orderList.transactTime = Date.now();
+    this.orderLists.set(orderList.orderListId, orderList);
+    this.tradeHistory.push({
+      symbol: orderList.symbol,
+      id: this.generateOrderId(),
+      orderId: orderList.orderListId,
+      orderListId: orderList.orderListId,
+      price: String(executionPrice),
+      qty: String(orderList.origQty),
+      quoteQty: String(orderList.origQty * executionPrice),
+      commission: "0",
+      commissionAsset: "USDT",
+      time: orderList.transactTime,
+      isBuyer: orderList.side === "BUY",
+      isMaker: false,
+      isBestMatch: true
+    });
+    this.persistState();
+  }
+
+  recordTradeFill(order, executionPrice, quantity) {
+    this.tradeHistory.push({
+      symbol: order.symbol,
+      id: this.generateOrderId(),
+      orderId: order.orderId,
+      orderListId: -1,
+      price: String(executionPrice),
+      qty: String(quantity),
+      quoteQty: String(Number(quantity) * executionPrice),
+      commission: "0",
+      commissionAsset: "USDT",
+      time: order.transactTime,
+      isBuyer: order.side === "BUY",
+      isMaker: order.type === "LIMIT",
+      isBestMatch: true
+    });
+  }
+}
+
+module.exports = new PaperBroker();
