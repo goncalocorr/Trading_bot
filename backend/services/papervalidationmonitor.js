@@ -15,6 +15,16 @@ class PaperValidationMonitor {
     this.updateRuntimeSettings = updateRuntimeSettings;
   }
 
+  async getSummary(currentRegimeId = null) {
+    const trades = await this.tradeModel.listTrades({ limit: 250 });
+    const summary = await this.paperValidationService.buildSummary(trades, { currentRegimeId });
+
+    return {
+      trades,
+      summary
+    };
+  }
+
   async monitorChampion() {
     if (!this.runtime.championRunId) {
       return;
@@ -76,9 +86,8 @@ class PaperValidationMonitor {
     });
   }
 
-  async monitorRecommendations() {
-    const trades = await this.tradeModel.listTrades({ limit: 250 });
-    const summary = await this.paperValidationService.buildSummary(trades);
+  async monitorRecommendations(currentRegimeId = null) {
+    const { summary } = await this.getSummary(currentRegimeId);
     const recommendation = summary.recommendation;
 
     if (!recommendation || recommendation.action !== "SWAP_TO_CHALLENGER" || !summary.challenger?.runId) {
@@ -110,6 +119,87 @@ class PaperValidationMonitor {
       recommendation,
       headToHead: summary.headToHead
     });
+  }
+
+  async monitorAutoGovernance(currentRegimeId = null) {
+    const { summary } = await this.getSummary(currentRegimeId);
+
+    if (
+      this.runtime.autoSwapEnabled &&
+      summary.recommendation?.action === "SWAP_TO_CHALLENGER" &&
+      summary.challenger?.runId
+    ) {
+      const alertKey = `auto-swap:${summary.champion?.runId || "none"}:${summary.challenger.runId}`;
+
+      if (this.runtime.paperValidationAlertKey !== alertKey) {
+        this.runtime.paperValidationAlertKey = alertKey;
+        this.updateRuntimeSettings({
+          championRunId: summary.challenger.runId,
+          challengerRunId: summary.champion?.runId || null,
+          activeStrategies: summary.challenger.activeStrategies,
+          tradingMode: "paper",
+          botEnabled: true,
+          approvedLiveRunId: null
+        });
+
+        await this.promotionEvents.createEvent({
+          runId: summary.challenger.runId,
+          slot: "champion",
+          action: "auto_swapped",
+          metadata: {
+            previousChampionRunId: summary.champion?.runId || null,
+            headToHead: summary.headToHead
+          }
+        });
+
+        await this.telegramService.notifyPaperValidationUpdate({
+          title: "Champion auto-swapped",
+          runId: summary.challenger.runId,
+          slot: "champion",
+          action: "auto_swapped",
+          reason: "Challenger automatically promoted after outperforming the current champion.",
+          performance: summary.challenger.paperPerformance
+        });
+      }
+    }
+
+    if (
+      this.runtime.autoApproveLiveEnabled &&
+      summary.approvalGate?.canApproveLive &&
+      summary.champion?.runId &&
+      Number(this.runtime.approvedLiveRunId || 0) !== Number(summary.champion.runId)
+    ) {
+      const alertKey = `auto-approve:${summary.champion.runId}`;
+
+      if (this.runtime.paperValidationAlertKey !== alertKey) {
+        this.runtime.paperValidationAlertKey = alertKey;
+        this.updateRuntimeSettings({
+          approvedLiveRunId: summary.champion.runId,
+          ...(this.runtime.autoLiveDeployEnabled && this.runtime.autonomyMode === "full_auto"
+            ? { tradingMode: "live", botEnabled: true }
+            : {})
+        });
+
+        await this.promotionEvents.createEvent({
+          runId: summary.champion.runId,
+          slot: "champion",
+          action: "auto_approved_live",
+          metadata: {
+            approvalGate: summary.approvalGate,
+            autoLiveDeployEnabled: Boolean(this.runtime.autoLiveDeployEnabled)
+          }
+        });
+
+        await this.telegramService.notifyPaperValidationUpdate({
+          title: "Champion auto-approved for live",
+          runId: summary.champion.runId,
+          slot: "champion",
+          action: this.runtime.autoLiveDeployEnabled ? "auto_approved_and_live" : "auto_approved_live",
+          reason: summary.approvalGate.reason,
+          performance: summary.champion.paperPerformance
+        });
+      }
+    }
   }
 }
 

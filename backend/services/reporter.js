@@ -118,6 +118,20 @@ function analyzeIndicatorEffectiveness(trades = []) {
 }
 
 class ReporterService {
+  constructor() {
+    this.providers = {
+      getPaperValidationSummary: null,
+      getAutonomyStatus: null
+    };
+  }
+
+  setProviders(providers = {}) {
+    this.providers = {
+      ...this.providers,
+      ...providers
+    };
+  }
+
   async getClosedTradesForPeriod(type, referenceDate = new Date()) {
     const bounds = getUtcPeriodBounds(type, referenceDate);
 
@@ -161,6 +175,10 @@ class ReporterService {
     const paperSummary = summarizeTrades(trades.filter((trade) => getTradeMode(trade) === "PAPER"));
     const liveSummary = summarizeTrades(trades.filter((trade) => getTradeMode(trade) === "LIVE"));
     const period = formatPeriod(type, bounds.start);
+    const [paperValidation, autonomyStatus] = await Promise.all([
+      this.providers.getPaperValidationSummary ? this.providers.getPaperValidationSummary() : Promise.resolve(null),
+      this.providers.getAutonomyStatus ? this.providers.getAutonomyStatus() : Promise.resolve(null)
+    ]);
     const reportData = {
       type,
       period,
@@ -171,6 +189,8 @@ class ReporterService {
         paper: paperSummary,
         live: liveSummary
       },
+      paperValidation,
+      autonomyStatus,
       capitalChange: capitalRows.length >= 2
         ? Number(capitalRows[capitalRows.length - 1].capital_value) - Number(capitalRows[0].capital_value)
         : 0,
@@ -203,7 +223,10 @@ class ReporterService {
       liveSummary:
         liveSummary.tradeCount > 0
           ? `Live mode: ${liveSummary.tradeCount} trades, ${liveSummary.winRate.toFixed(2)}% win rate, PnL ${liveSummary.totalPnl.toFixed(4)}`
-          : null
+          : null,
+      autonomySummary: autonomyStatus
+        ? `Autonomy: ${autonomyStatus.mode || "manual"} | Trading: ${autonomyStatus.tradingMode || "paper"} | Regime: ${autonomyStatus.currentRegimeId || "mixed"}`
+        : null
     });
 
     return savedReport;

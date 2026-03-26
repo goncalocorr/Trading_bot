@@ -40,6 +40,79 @@ function SettingsPanel({ settings, form, onChange, onSave, saving = false, strat
         </label>
 
         <label className="flex flex-col gap-2 text-sm text-slate-200">
+          Autonomy mode
+          <select
+            value={form.autonomyMode}
+            onChange={(event) => onChange("autonomyMode", event.target.value)}
+            className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
+          >
+            <option value="manual">Manual</option>
+            <option value="supervised_auto">Supervised auto</option>
+            <option value="full_auto">Full auto</option>
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-2 text-sm text-slate-200">
+          Shadow mode
+          <select
+            value={String(form.shadowModeEnabled)}
+            onChange={(event) => onChange("shadowModeEnabled", event.target.value === "true")}
+            className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
+          >
+            <option value="false">Disabled</option>
+            <option value="true">Enabled</option>
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-2 text-sm text-slate-200">
+          Heartbeat alerts
+          <select
+            value={String(form.autonomyHeartbeatEnabled)}
+            onChange={(event) => onChange("autonomyHeartbeatEnabled", event.target.value === "true")}
+            className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
+          >
+            <option value="false">Disabled</option>
+            <option value="true">Enabled</option>
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-2 text-sm text-slate-200">
+          Auto-swap champion
+          <select
+            value={String(form.autoSwapEnabled)}
+            onChange={(event) => onChange("autoSwapEnabled", event.target.value === "true")}
+            className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
+          >
+            <option value="false">Disabled</option>
+            <option value="true">Enabled</option>
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-2 text-sm text-slate-200">
+          Auto-approve live
+          <select
+            value={String(form.autoApproveLiveEnabled)}
+            onChange={(event) => onChange("autoApproveLiveEnabled", event.target.value === "true")}
+            className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
+          >
+            <option value="false">Disabled</option>
+            <option value="true">Enabled</option>
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-2 text-sm text-slate-200">
+          Auto-live deploy
+          <select
+            value={String(form.autoLiveDeployEnabled)}
+            onChange={(event) => onChange("autoLiveDeployEnabled", event.target.value === "true")}
+            className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
+          >
+            <option value="false">Disabled</option>
+            <option value="true">Enabled</option>
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-2 text-sm text-slate-200">
           Score threshold
           <input
             type="number"

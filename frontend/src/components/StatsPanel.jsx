@@ -20,6 +20,7 @@ function StatsPanel({ stats }) {
   const promotionHistory = Array.isArray(paperValidation?.promotionHistory) ? paperValidation.promotionHistory : [];
   const headToHead = paperValidation?.headToHead || null;
   const recommendation = paperValidation?.recommendation || null;
+  const autonomy = stats?.autonomy || null;
 
   return (
     <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
@@ -39,6 +40,84 @@ function StatsPanel({ stats }) {
         <StatCard label="Worst Trade" value={formatNumber(stats?.worstTrade?.result_pnl)} accent="text-rose-300" />
         <StatCard label="Win Streak" value={String(stats?.longestWinningStreak || 0)} accent="text-amber-300" />
         <StatCard label="Sharpe Ratio" value={formatNumber(stats?.sharpeRatio)} accent="text-fuchsia-300" />
+      </div>
+
+      <div className="mt-6 rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-white">Autonomy Control</h3>
+          <p className="mt-1 text-sm text-slate-300">
+            Current autonomous operating state, live gate and circuit breaker health.
+          </p>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-4">
+          <div className="rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Autonomy Mode</p>
+            <p className="mt-2 text-sm font-semibold text-white">{autonomy?.mode || "manual"}</p>
+            <p className="mt-1 text-xs text-slate-500">Trading: {autonomy?.tradingMode || "paper"}</p>
+          </div>
+          <div className="rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Current Regime</p>
+            <p className="mt-2 text-sm font-semibold text-white">{autonomy?.currentRegimeId || "mixed"}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Shadow: {autonomy?.shadowModeEnabled ? "enabled" : "disabled"}
+            </p>
+          </div>
+          <div className="rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Strategy Set</p>
+            <p className="mt-2 text-sm font-semibold text-white">{autonomy?.strategySelection?.source || "runtime"}</p>
+            <p className="mt-1 text-xs text-slate-400">
+              {(autonomy?.strategySelection?.strategyIds || []).join(", ") || "n/a"}
+            </p>
+          </div>
+          <div className="rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Live Gate</p>
+            <p className="mt-2 text-sm font-semibold text-white">
+              {autonomy?.liveReadiness?.approvalGate?.status || "UNKNOWN"}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Auto pause: {autonomy?.autoPauseReason || "none"}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Auto Governance</p>
+          <p className="mt-2 text-sm font-semibold text-white">
+            Approved live run: {autonomy?.approvedLiveRunId ? `#${autonomy.approvedLiveRunId}` : "none"}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Auto swap: {autonomy?.automationFlags?.autoSwapEnabled ? "on" : "off"} | Auto approve: {autonomy?.automationFlags?.autoApproveLiveEnabled ? "on" : "off"} | Auto deploy: {autonomy?.automationFlags?.autoLiveDeployEnabled ? "on" : "off"}
+          </p>
+        </div>
+
+        <div className="mt-4 rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Strategy Allocation</p>
+          <p className="mt-2 text-sm font-semibold text-white">
+            Deployable capital: {formatNumber(autonomy?.strategyAllocation?.deployableCapital)}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Risk multiplier: {formatNumber(autonomy?.strategyAllocation?.riskMultiplier)} | Effective risk/trade: {formatNumber((autonomy?.strategyAllocation?.effectiveRiskPerTrade || 0) * 100)}%
+          </p>
+          <div className="mt-3 grid gap-2 xl:grid-cols-3">
+            {(autonomy?.strategyAllocation?.strategyTargets || []).map((target) => (
+              <div key={target.strategyId} className="rounded-2xl border border-white/10 bg-slate-950/60 p-3">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{target.strategyId}</p>
+                <p className="mt-2 text-sm font-semibold text-white">{formatNumber(target.capitalTarget)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Circuit Breakers</p>
+          <p className="mt-2 text-sm font-semibold text-white">
+            Execution failures: {Number(autonomy?.circuitBreakers?.executionFailures || 0)} | Exchange failures: {Number(autonomy?.circuitBreakers?.exchangeFailures || 0)}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Last trigger: {autonomy?.circuitBreakers?.lastTriggeredAt || "never"} {autonomy?.circuitBreakers?.lastReason ? `(${autonomy.circuitBreakers.lastReason})` : ""}
+          </p>
+        </div>
       </div>
 
       <div className="mt-6 rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
@@ -264,6 +343,33 @@ function StatsPanel({ stats }) {
               Confidence: {recommendation?.confidence || "n/a"}
             </p>
           </div>
+        </div>
+
+        <div className="mt-4 rounded-[18px] border border-white/10 bg-slate-950/50 p-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Regime-aware Governance</p>
+          <p className="mt-2 text-sm font-semibold text-white">
+            Current regime: {paperValidation?.regimeGovernance?.currentRegimeId || "unknown"}
+          </p>
+          <div className="mt-3 grid gap-3 xl:grid-cols-3">
+            {["trend", "sideways", "volatile"].map((regimeId) => {
+              const slot = paperValidation?.regimeGovernance?.slots?.[regimeId];
+
+              return (
+                <div key={regimeId} className="rounded-2xl border border-white/10 bg-slate-950/60 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{regimeId}</p>
+                  <p className="mt-2 text-sm font-semibold text-white">
+                    {slot?.runId ? `Run #${slot.runId}` : "No regime champion"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {(slot?.activeStrategies || []).join(", ") || "n/a"}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            Active regime champion: {paperValidation?.regimeGovernance?.activeChampionRunId ? `#${paperValidation.regimeGovernance.activeChampionRunId}` : "none"}
+          </p>
         </div>
 
         <div className="mt-4 space-y-3">

@@ -471,7 +471,7 @@ class RiskManager {
     };
   }
 
-  async buildTradeRiskPlan({ side, entryPrice, atr, pair }) {
+  async buildTradeRiskPlan({ side, entryPrice, atr, pair, riskPerTradeOverride }) {
     const [capitalState, pairCooldown] = await Promise.all([
       this.getAvailableCapitalState(),
       this.evaluatePairCooldown(pair)
@@ -479,7 +479,8 @@ class RiskManager {
     const positionSizing = this.calculatePositionSize({
       capital: capitalState.availableCapital,
       entryPrice,
-      atr
+      atr,
+      riskPerTrade: riskPerTradeOverride ?? this.getConfig().riskPerTrade
     });
     const exits = this.calculateExitLevels({ side, entryPrice, atr });
 

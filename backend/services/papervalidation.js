@@ -35,6 +35,14 @@ class PaperValidationService {
     };
   }
 
+  getRegimeChampionRunIds() {
+    return {
+      trend: this.runtime.regimeChampionTrendRunId || null,
+      sideways: this.runtime.regimeChampionSidewaysRunId || null,
+      volatile: this.runtime.regimeChampionVolatileRunId || null
+    };
+  }
+
   getTradingMode(trade = {}) {
     return String(trade.metadata?.tradingMode || "").toUpperCase();
   }
@@ -228,7 +236,29 @@ class PaperValidationService {
     };
   }
 
-  async buildSummary(trades = []) {
+  async buildRegimeGovernance(trades = [], currentRegimeId = null) {
+    const paperTrades = this.filterPaperTrades(trades);
+    const regimeRunIds = this.getRegimeChampionRunIds();
+    const entries = await Promise.all(
+      Object.entries(regimeRunIds).map(async ([regimeId, runId]) => [
+        regimeId,
+        await this.buildRunSummary(runId, paperTrades)
+      ])
+    );
+    const slots = Object.fromEntries(entries);
+    const activeChampion = currentRegimeId && slots[currentRegimeId]
+      ? slots[currentRegimeId]
+      : null;
+
+    return {
+      currentRegimeId: currentRegimeId || null,
+      slots,
+      activeChampionRunId: activeChampion?.runId || null,
+      activeChampion
+    };
+  }
+
+  async buildSummary(trades = [], options = {}) {
     const paperTrades = this.filterPaperTrades(trades);
     const [promotionHistory, champion, challenger] = await Promise.all([
       this.promotionEvents.listEvents({ limit: 10 }),
@@ -246,6 +276,7 @@ class PaperValidationService {
       approvalGate,
       headToHead
     });
+    const regimeGovernance = await this.buildRegimeGovernance(trades, options.currentRegimeId || null);
 
     return {
       champion,
@@ -253,7 +284,8 @@ class PaperValidationService {
       approvalGate,
       promotionHistory,
       headToHead,
-      recommendation
+      recommendation,
+      regimeGovernance
     };
   }
 }

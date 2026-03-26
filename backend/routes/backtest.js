@@ -255,7 +255,10 @@ module.exports = function createBacktestRouter(context) {
 
   router.patch(
     "/runs/:id/promote",
-    [body("slot").optional().isIn(["champion", "challenger"])],
+    [
+      body("slot").optional().isIn(["champion", "challenger"]),
+      body("regimeId").optional().isIn(["trend", "sideways", "volatile"])
+    ],
     async (req, res) => {
       const errors = validationResult(req);
 
@@ -277,22 +280,36 @@ module.exports = function createBacktestRouter(context) {
       }
 
       const slot = req.body.slot || "champion";
+      const regimeId = req.body.regimeId || null;
       const previousRunId = slot === "champion" ? context.runtime.championRunId : context.runtime.challengerRunId;
       const activeStrategies = Array.isArray(run.config?.activeStrategies) && run.config.activeStrategies.length > 0
         ? run.config.activeStrategies
         : context.strategyRegistry.getActiveStrategies().map((strategy) => strategy.id);
-      const settings = context.updateRuntimeSettings(
-        slot === "champion"
-          ? {
-              tradingMode: "paper",
-              botEnabled: true,
-              activeStrategies,
-              championRunId: run.id
-            }
-          : {
-              challengerRunId: run.id
-            }
-      );
+      const settingsPayload = slot === "champion"
+        ? {
+            tradingMode: "paper",
+            botEnabled: true,
+            activeStrategies,
+            championRunId: run.id,
+            approvedLiveRunId: null
+          }
+        : {
+            challengerRunId: run.id
+          };
+
+      if (regimeId === "trend") {
+        settingsPayload.regimeChampionTrendRunId = run.id;
+      }
+
+      if (regimeId === "sideways") {
+        settingsPayload.regimeChampionSidewaysRunId = run.id;
+      }
+
+      if (regimeId === "volatile") {
+        settingsPayload.regimeChampionVolatileRunId = run.id;
+      }
+
+      const settings = context.updateRuntimeSettings(settingsPayload);
       const mark = await context.backtestRunMarks.upsertMark(run.id, {
         isFavorite: run.mark?.is_favorite || false,
         favoriteLabel: run.mark?.favorite_label || null,
@@ -306,7 +323,8 @@ module.exports = function createBacktestRouter(context) {
         action: "promoted",
         metadata: {
           activeStrategies,
-          tradingMode: settings.tradingMode
+          tradingMode: settings.tradingMode,
+          regimeId
         }
       });
       if (previousRunId && Number(previousRunId) !== Number(run.id)) {
@@ -361,6 +379,7 @@ module.exports = function createBacktestRouter(context) {
       }
 
       const settings = context.updateRuntimeSettings({
+        approvedLiveRunId: run.id,
         tradingMode: "live",
         botEnabled: true
       });

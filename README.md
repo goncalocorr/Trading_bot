@@ -175,6 +175,13 @@ docker compose up -d --build
 - Backend: `http://your-server-ip:3000`
 - phpMyAdmin: `http://your-server-ip:8080`
 
+Production notes:
+
+- the stack now uses container healthchecks for MySQL, backend and frontend
+- the frontend waits for a healthy backend before starting
+- the backend runs startup safety checks before autonomous trading resumes
+- in strict startup mode, unsafe live conditions will auto-pause the bot instead of trading blindly
+
 ## VPS Deployment Guide
 
 Example targets:
@@ -199,16 +206,34 @@ docker compose up -d --build
 npm install -g pm2
 ```
 
-6. Example PM2 backend start:
+6. Start the backend with the included PM2 ecosystem file:
 
 ```bash
-cd backend
-pm2 start server.js --name trading-bot-backend
+pm2 start ecosystem.config.cjs
 pm2 save
 pm2 startup
 ```
 
 If you use Docker in production, PM2 is usually unnecessary because container restart policy already handles process recovery.
+
+## Production Hardening
+
+The backend now includes:
+
+- startup checks for MySQL, Binance connectivity, account access and macro feed
+- strict live startup gate requiring an approved live run
+- startup reconciliation before autonomous trading resumes
+- detailed `/health` output with component status
+- circuit breaker state in health output
+- restart-safe runtime visibility for autonomy and governance
+
+Recommended production approach:
+
+1. keep `STARTUP_STRICT_MODE=true`
+2. use `paper` first, then approve a run for live
+3. only enable `AUTO_LIVE_DEPLOY_ENABLED=true` after stable paper validation
+4. monitor `/health` from your VPS or uptime service
+5. back up `backend/.env`, MySQL data and paper state files
 
 ## Environment Variables
 
@@ -220,6 +245,7 @@ Main variables:
 BINANCE_API_KEY=
 BINANCE_SECRET=
 BINANCE_TESTNET=true
+STARTUP_STRICT_MODE=true
 WEBHOOK_SECRET=
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
@@ -262,3 +288,4 @@ FRONTEND_PORT=5173
 - Install dependencies before first run.
 - The backend initializes the database schema on startup.
 - News, Fear & Greed, and macro-event integrations depend on external APIs.
+- In strict startup mode, the bot will auto-pause instead of starting live trading under unsafe conditions.

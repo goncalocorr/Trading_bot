@@ -17,9 +17,11 @@ class StrategyRunner {
     this.strategyRegistry = strategyRegistry;
   }
 
-  async scanPair(pair) {
+  async scanPair(pair, options = {}) {
     const candlesByTimeframe = await this.binanceService.getMultiTimeframeCandles(pair);
-    const strategies = this.strategyRegistry.getActiveStrategies();
+    const strategies = Array.isArray(options.strategyIds) && options.strategyIds.length > 0
+      ? this.strategyRegistry.getStrategies(options.strategyIds)
+      : this.strategyRegistry.getActiveStrategies();
     const results = [];
 
     for (const strategy of strategies) {
@@ -36,7 +38,10 @@ class StrategyRunner {
           side: candidate.side,
           triggerSource: "auto",
           candlesByTimeframe: candidate.candlesByTimeframe || candlesByTimeframe,
-          metadata: candidate.metadata || {}
+          metadata: {
+            ...(candidate.metadata || {}),
+            ...(options.signalMetadata || {})
+          }
         });
 
         results.push({
@@ -52,7 +57,7 @@ class StrategyRunner {
     return results;
   }
 
-  async runAutoScan() {
+  async runAutoScan(options = {}) {
     if (!this.runtime.botEnabled) {
       return [];
     }
@@ -62,7 +67,7 @@ class StrategyRunner {
     for (const pair of this.runtime.tradingPairs) {
       try {
         // eslint-disable-next-line no-await-in-loop
-        const pairResults = await this.scanPair(pair);
+        const pairResults = await this.scanPair(pair, options);
         summary.push({
           pair,
           results: pairResults

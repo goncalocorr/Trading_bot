@@ -136,13 +136,23 @@ function Dashboard() {
   const [settingsForm, setSettingsForm] = useState({
     botEnabled: true,
     tradingMode: "paper",
+    autonomyMode: "manual",
+    shadowModeEnabled: false,
+    autonomyHeartbeatEnabled: false,
+    autoSwapEnabled: false,
+    autoApproveLiveEnabled: false,
+    autoLiveDeployEnabled: false,
     scoreThreshold: 8,
     riskPerTrade: 0.01,
     compoundRatio: 0.5,
     tradingPairs: "BTCUSDT",
     activeStrategies: [],
     championRunId: null,
-    challengerRunId: null
+    challengerRunId: null,
+    regimeChampionTrendRunId: null,
+    regimeChampionSidewaysRunId: null,
+    regimeChampionVolatileRunId: null,
+    approvedLiveRunId: null
   });
   const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -202,13 +212,23 @@ function Dashboard() {
         setSettingsForm({
           botEnabled: settingsResponse.settings?.botEnabled ?? true,
           tradingMode: settingsResponse.settings?.tradingMode ?? "paper",
+          autonomyMode: settingsResponse.settings?.autonomyMode ?? "manual",
+          shadowModeEnabled: settingsResponse.settings?.shadowModeEnabled ?? false,
+          autonomyHeartbeatEnabled: settingsResponse.settings?.autonomyHeartbeatEnabled ?? false,
+          autoSwapEnabled: settingsResponse.settings?.autoSwapEnabled ?? false,
+          autoApproveLiveEnabled: settingsResponse.settings?.autoApproveLiveEnabled ?? false,
+          autoLiveDeployEnabled: settingsResponse.settings?.autoLiveDeployEnabled ?? false,
           scoreThreshold: settingsResponse.settings?.scoreThreshold ?? 8,
           riskPerTrade: settingsResponse.settings?.riskPerTrade ?? 0.01,
           compoundRatio: settingsResponse.settings?.compoundRatio ?? 0.5,
           tradingPairs: (settingsResponse.settings?.tradingPairs || ["BTCUSDT"]).join(","),
           activeStrategies: settingsResponse.settings?.activeStrategies || [],
           championRunId: settingsResponse.settings?.championRunId || null,
-          challengerRunId: settingsResponse.settings?.challengerRunId || null
+          challengerRunId: settingsResponse.settings?.challengerRunId || null,
+          regimeChampionTrendRunId: settingsResponse.settings?.regimeChampionTrendRunId || null,
+          regimeChampionSidewaysRunId: settingsResponse.settings?.regimeChampionSidewaysRunId || null,
+          regimeChampionVolatileRunId: settingsResponse.settings?.regimeChampionVolatileRunId || null,
+          approvedLiveRunId: settingsResponse.settings?.approvedLiveRunId || null
         });
         setError("");
         setManualFeedback(null);
@@ -429,6 +449,12 @@ function Dashboard() {
       const response = await updateSettings({
         botEnabled: settingsForm.botEnabled,
         tradingMode: settingsForm.tradingMode,
+        autonomyMode: settingsForm.autonomyMode,
+        shadowModeEnabled: Boolean(settingsForm.shadowModeEnabled),
+        autonomyHeartbeatEnabled: Boolean(settingsForm.autonomyHeartbeatEnabled),
+        autoSwapEnabled: Boolean(settingsForm.autoSwapEnabled),
+        autoApproveLiveEnabled: Boolean(settingsForm.autoApproveLiveEnabled),
+        autoLiveDeployEnabled: Boolean(settingsForm.autoLiveDeployEnabled),
         scoreThreshold: Number(settingsForm.scoreThreshold),
         riskPerTrade: Number(settingsForm.riskPerTrade),
         compoundRatio: Number(settingsForm.compoundRatio),
@@ -437,6 +463,30 @@ function Dashboard() {
       });
 
       setSettings(response.settings || null);
+      setSettingsForm((current) => ({
+        ...current,
+        botEnabled: response.settings?.botEnabled ?? current.botEnabled,
+        tradingMode: response.settings?.tradingMode || current.tradingMode,
+        autonomyMode: response.settings?.autonomyMode || current.autonomyMode,
+        shadowModeEnabled: response.settings?.shadowModeEnabled ?? current.shadowModeEnabled,
+        autonomyHeartbeatEnabled: response.settings?.autonomyHeartbeatEnabled ?? current.autonomyHeartbeatEnabled,
+        autoSwapEnabled: response.settings?.autoSwapEnabled ?? current.autoSwapEnabled,
+        autoApproveLiveEnabled: response.settings?.autoApproveLiveEnabled ?? current.autoApproveLiveEnabled,
+        autoLiveDeployEnabled: response.settings?.autoLiveDeployEnabled ?? current.autoLiveDeployEnabled,
+        scoreThreshold: response.settings?.scoreThreshold ?? current.scoreThreshold,
+        riskPerTrade: response.settings?.riskPerTrade ?? current.riskPerTrade,
+        compoundRatio: response.settings?.compoundRatio ?? current.compoundRatio,
+        tradingPairs: Array.isArray(response.settings?.tradingPairs)
+          ? response.settings.tradingPairs.join(",")
+          : current.tradingPairs,
+        activeStrategies: response.settings?.activeStrategies || current.activeStrategies,
+        championRunId: response.settings?.championRunId ?? current.championRunId,
+        challengerRunId: response.settings?.challengerRunId ?? current.challengerRunId,
+        regimeChampionTrendRunId: response.settings?.regimeChampionTrendRunId ?? current.regimeChampionTrendRunId,
+        regimeChampionSidewaysRunId: response.settings?.regimeChampionSidewaysRunId ?? current.regimeChampionSidewaysRunId,
+        regimeChampionVolatileRunId: response.settings?.regimeChampionVolatileRunId ?? current.regimeChampionVolatileRunId,
+        approvedLiveRunId: response.settings?.approvedLiveRunId ?? current.approvedLiveRunId
+      }));
       setError("");
     } catch (requestError) {
       setError(requestError.response?.data?.message || requestError.message);
@@ -463,16 +513,19 @@ function Dashboard() {
     }
   };
 
-  const handlePromoteBacktestRun = async (runId, slot = "champion") => {
+  const handlePromoteBacktestRun = async (runId, slot = "champion", regimeId = null) => {
     try {
-      const response = await promoteBacktestRun(runId, { slot });
+      const response = await promoteBacktestRun(runId, { slot, regimeId });
       setSettings(response.settings || null);
       setSettingsForm((current) => ({
         ...current,
         tradingMode: response.settings?.tradingMode || current.tradingMode,
         activeStrategies: response.settings?.activeStrategies || current.activeStrategies,
         championRunId: response.settings?.championRunId ?? current.championRunId,
-        challengerRunId: response.settings?.challengerRunId ?? current.challengerRunId
+        challengerRunId: response.settings?.challengerRunId ?? current.challengerRunId,
+        regimeChampionTrendRunId: response.settings?.regimeChampionTrendRunId ?? current.regimeChampionTrendRunId,
+        regimeChampionSidewaysRunId: response.settings?.regimeChampionSidewaysRunId ?? current.regimeChampionSidewaysRunId,
+        regimeChampionVolatileRunId: response.settings?.regimeChampionVolatileRunId ?? current.regimeChampionVolatileRunId
       }));
       const [runsResponse, selectedRunResponse] = await Promise.all([
         fetchBacktestRuns({ limit: 10, pair: backtestForm.pair }),
@@ -492,7 +545,8 @@ function Dashboard() {
       setSettings(response.settings || null);
       setSettingsForm((current) => ({
         ...current,
-        tradingMode: response.settings?.tradingMode || current.tradingMode
+        tradingMode: response.settings?.tradingMode || current.tradingMode,
+        approvedLiveRunId: response.settings?.approvedLiveRunId ?? current.approvedLiveRunId
       }));
       setError("");
     } catch (requestError) {

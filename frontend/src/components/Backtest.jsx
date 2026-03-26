@@ -273,6 +273,15 @@ function Backtest({
                         <button type="button" onClick={() => onPromoteRun?.(run.id, "challenger")} className="rounded-full border border-fuchsia-300/20 bg-fuchsia-300/10 px-3 py-1 text-[11px] font-semibold text-fuchsia-100 transition hover:bg-fuchsia-300/15">
                           Set challenger
                         </button>
+                        <button type="button" onClick={() => onPromoteRun?.(run.id, "champion", "trend")} className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-[11px] font-semibold text-emerald-100 transition hover:bg-emerald-300/15">
+                          Trend champion
+                        </button>
+                        <button type="button" onClick={() => onPromoteRun?.(run.id, "champion", "sideways")} className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-[11px] font-semibold text-amber-100 transition hover:bg-amber-300/15">
+                          Sideways champion
+                        </button>
+                        <button type="button" onClick={() => onPromoteRun?.(run.id, "champion", "volatile")} className="rounded-full border border-rose-300/20 bg-rose-300/10 px-3 py-1 text-[11px] font-semibold text-rose-100 transition hover:bg-rose-300/15">
+                          Volatile champion
+                        </button>
                         <button type="button" onClick={() => onApproveLive?.(run.id)} className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-[11px] font-semibold text-emerald-100 transition hover:bg-emerald-300/15">
                           Approve live
                         </button>

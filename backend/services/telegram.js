@@ -90,7 +90,8 @@ class TelegramService {
       `Period: ${report.period || "n/a"}`,
       report.summary || null,
       report.paperSummary || null,
-      report.liveSummary || null
+      report.liveSummary || null,
+      report.autonomySummary || null
     ]
       .filter(Boolean)
       .join("\n");
@@ -162,6 +163,38 @@ class TelegramService {
       .join("\n");
   }
 
+  formatCircuitBreakerMessage(payload = {}) {
+    return [
+      "Circuit breaker triggered",
+      payload.reason ? `Reason: ${payload.reason}` : null,
+      payload.failureType ? `Failure type: ${payload.failureType}` : null,
+      payload.error ? `Error: ${payload.error}` : null,
+      payload.counters
+        ? `Execution failures: ${Number(payload.counters.executionFailures || 0)} | Exchange failures: ${Number(payload.counters.exchangeFailures || 0)}`
+        : null
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  formatAutonomyHeartbeat(payload = {}) {
+    return [
+      "Autonomy heartbeat",
+      payload.mode ? `Mode: ${payload.mode}` : null,
+      payload.tradingMode ? `Trading: ${payload.tradingMode}` : null,
+      payload.currentRegimeId ? `Regime: ${payload.currentRegimeId}` : null,
+      payload.strategySelection?.strategyIds?.length
+        ? `Strategies: ${payload.strategySelection.strategyIds.join(", ")}`
+        : null,
+      payload.liveReadiness?.approvalGate?.status
+        ? `Live gate: ${payload.liveReadiness.approvalGate.status}`
+        : null,
+      payload.autoPauseReason ? `Auto pause: ${payload.autoPauseReason}` : null
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
   async sendMessage(text, options = {}) {
     if (!this.isConfigured()) {
       return {
@@ -226,6 +259,14 @@ class TelegramService {
 
   async notifyPaperValidationRecommendation(payload) {
     return this.sendMessage(this.formatPaperValidationRecommendation(payload));
+  }
+
+  async notifyCircuitBreakerTriggered(payload) {
+    return this.sendMessage(this.formatCircuitBreakerMessage(payload));
+  }
+
+  async notifyAutonomyHeartbeat(payload) {
+    return this.sendMessage(this.formatAutonomyHeartbeat(payload));
   }
 }
 

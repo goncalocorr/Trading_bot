@@ -80,13 +80,23 @@ module.exports = function createDashboardRouter(context) {
     [
       body("botEnabled").optional().isBoolean(),
       body("tradingMode").optional().isIn(["paper", "live"]),
+      body("autonomyMode").optional().isIn(["manual", "supervised_auto", "full_auto"]),
+      body("shadowModeEnabled").optional().isBoolean(),
+      body("autonomyHeartbeatEnabled").optional().isBoolean(),
+      body("autoSwapEnabled").optional().isBoolean(),
+      body("autoApproveLiveEnabled").optional().isBoolean(),
+      body("autoLiveDeployEnabled").optional().isBoolean(),
       body("scoreThreshold").optional().isInt({ min: 1, max: 12 }),
       body("riskPerTrade").optional().isFloat({ min: 0.001, max: 0.1 }),
       body("compoundRatio").optional().isFloat({ min: 0, max: 1 }),
       body("tradingPairs").optional().isArray({ min: 1 }),
       body("activeStrategies").optional().isArray({ min: 1 }),
       body("championRunId").optional({ values: "falsy" }).isInt({ min: 1 }),
-      body("challengerRunId").optional({ values: "falsy" }).isInt({ min: 1 })
+      body("challengerRunId").optional({ values: "falsy" }).isInt({ min: 1 }),
+      body("regimeChampionTrendRunId").optional({ values: "falsy" }).isInt({ min: 1 }),
+      body("regimeChampionSidewaysRunId").optional({ values: "falsy" }).isInt({ min: 1 }),
+      body("regimeChampionVolatileRunId").optional({ values: "falsy" }).isInt({ min: 1 }),
+      body("approvedLiveRunId").optional({ values: "falsy" }).isInt({ min: 1 })
     ],
     async (req, res) => {
       const errors = validationResult(req);

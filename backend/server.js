@@ -24,6 +24,11 @@ const StrategyRegistry = require("./services/strategyregistry");
 const StrategyRunner = require("./services/strategyrunner");
 const PaperValidationService = require("./services/papervalidation");
 const PaperValidationMonitor = require("./services/papervalidationmonitor");
+const CapitalAllocator = require("./services/capitalallocator");
+const CircuitBreakerService = require("./services/circuitbreaker");
+const AutonomousOperator = require("./services/autonomousoperator");
+const StartupGuard = require("./services/startupguard");
+const HealthMonitor = require("./services/healthmonitor");
 const indicatorsService = require("./services/indicators");
 const scorerService = require("./services/scorer");
 const riskManager = require("./services/riskmanager");
@@ -47,6 +52,12 @@ const DEFAULT_SCORE_THRESHOLD = 8;
 const runtime = {
   botEnabled: true,
   tradingMode: executionEngine.getMode(),
+  autonomyMode: String(process.env.AUTONOMY_MODE || "manual").toLowerCase(),
+  shadowModeEnabled: parseBooleanEnv(process.env.SHADOW_MODE_ENABLED, false),
+  autonomyHeartbeatEnabled: parseBooleanEnv(process.env.AUTONOMY_HEARTBEAT_ENABLED, false),
+  autoSwapEnabled: parseBooleanEnv(process.env.AUTO_SWAP_ENABLED, false),
+  autoApproveLiveEnabled: parseBooleanEnv(process.env.AUTO_APPROVE_LIVE_ENABLED, false),
+  autoLiveDeployEnabled: parseBooleanEnv(process.env.AUTO_LIVE_DEPLOY_ENABLED, false),
   scoreThreshold: Number(process.env.SCORE_THRESHOLD || DEFAULT_SCORE_THRESHOLD),
   riskPerTrade: Number(process.env.RISK_PER_TRADE || 0.01),
   compoundRatio: Number(process.env.COMPOUND_RATIO || 0.5),
@@ -57,7 +68,20 @@ const runtime = {
   strategyHealthAlertState: {},
   championRunId: Number(process.env.CHAMPION_RUN_ID || 0) || null,
   challengerRunId: Number(process.env.CHALLENGER_RUN_ID || 0) || null,
-  paperValidationAlertKey: null
+  regimeChampionTrendRunId: Number(process.env.REGIME_CHAMPION_TREND_RUN_ID || 0) || null,
+  regimeChampionSidewaysRunId: Number(process.env.REGIME_CHAMPION_SIDEWAYS_RUN_ID || 0) || null,
+  regimeChampionVolatileRunId: Number(process.env.REGIME_CHAMPION_VOLATILE_RUN_ID || 0) || null,
+  approvedLiveRunId: Number(process.env.APPROVED_LIVE_RUN_ID || 0) || null,
+  paperValidationAlertKey: null,
+  autoPauseReason: null,
+  shadowLastSummary: null,
+  lastAutonomySnapshot: null,
+  circuitBreakers: {
+    executionFailures: 0,
+    exchangeFailures: 0,
+    lastTriggeredAt: null,
+    lastReason: null
+  }
 };
 
 const executionOrchestrator = new ExecutionOrchestrator({
@@ -124,6 +148,39 @@ const strategyRunner = new StrategyRunner({
   processSignal: (payload) => processSignal(payload),
   strategyRegistry
 });
+const capitalAllocator = new CapitalAllocator();
+const circuitBreaker = new CircuitBreakerService({
+  runtime,
+  telegramService
+});
+const autonomousOperator = new AutonomousOperator({
+  runtime,
+  signalInspector,
+  strategyRunner,
+  paperValidationService,
+  backtestRuns: BacktestRunModel,
+  capitalAllocator,
+  riskManager,
+  circuitBreaker,
+  telegramService,
+  inferCurrentRegimeId: inferCurrentRegimeIdFromDebug
+});
+const startupGuard = new StartupGuard({
+  runtime,
+  db,
+  binanceService,
+  macroEventsService,
+  reconcileExchangeTrades,
+  executionOrchestrator,
+  updateRuntimeSettings
+});
+const healthMonitor = new HealthMonitor({
+  runtime,
+  db,
+  binanceService,
+  executionEngine,
+  macroEventsService
+});
 
 function parseTradingPairs(value) {
   return String(value || "")
@@ -132,10 +189,24 @@ function parseTradingPairs(value) {
     .filter(Boolean);
 }
 
+function parseBooleanEnv(value, fallback = false) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  return ["true", "1", "yes", "on"].includes(String(value).trim().toLowerCase());
+}
+
 function getRuntimeSettings() {
   return {
     botEnabled: runtime.botEnabled,
     tradingMode: runtime.tradingMode,
+    autonomyMode: runtime.autonomyMode,
+    shadowModeEnabled: runtime.shadowModeEnabled,
+    autonomyHeartbeatEnabled: runtime.autonomyHeartbeatEnabled,
+    autoSwapEnabled: runtime.autoSwapEnabled,
+    autoApproveLiveEnabled: runtime.autoApproveLiveEnabled,
+    autoLiveDeployEnabled: runtime.autoLiveDeployEnabled,
     scoreThreshold: runtime.scoreThreshold,
     riskPerTrade: runtime.riskPerTrade,
     compoundRatio: runtime.compoundRatio,
@@ -145,18 +216,62 @@ function getRuntimeSettings() {
       .map((item) => item.trim())
       .filter(Boolean),
     championRunId: runtime.championRunId,
-    challengerRunId: runtime.challengerRunId
+    challengerRunId: runtime.challengerRunId,
+    regimeChampionTrendRunId: runtime.regimeChampionTrendRunId,
+    regimeChampionSidewaysRunId: runtime.regimeChampionSidewaysRunId,
+    regimeChampionVolatileRunId: runtime.regimeChampionVolatileRunId,
+    approvedLiveRunId: runtime.approvedLiveRunId,
+    autoPauseReason: runtime.autoPauseReason,
+    shadowLastSummary: runtime.shadowLastSummary,
+    lastAutonomySnapshot: runtime.lastAutonomySnapshot,
+    circuitBreakers: runtime.circuitBreakers
   };
 }
 
 function updateRuntimeSettings(payload = {}) {
   if (typeof payload.botEnabled === "boolean") {
     runtime.botEnabled = payload.botEnabled;
+    if (payload.botEnabled) {
+      runtime.autoPauseReason = null;
+      circuitBreaker.resetAll();
+    }
   }
 
   if (payload.tradingMode !== undefined) {
     runtime.tradingMode = String(payload.tradingMode).toLowerCase() === "live" ? "live" : "paper";
     process.env.TRADING_MODE = runtime.tradingMode;
+  }
+
+  if (payload.autonomyMode !== undefined) {
+    runtime.autonomyMode = ["manual", "supervised_auto", "full_auto"].includes(String(payload.autonomyMode).toLowerCase())
+      ? String(payload.autonomyMode).toLowerCase()
+      : "manual";
+    process.env.AUTONOMY_MODE = runtime.autonomyMode;
+  }
+
+  if (payload.shadowModeEnabled !== undefined) {
+    runtime.shadowModeEnabled = Boolean(payload.shadowModeEnabled);
+    process.env.SHADOW_MODE_ENABLED = runtime.shadowModeEnabled ? "true" : "false";
+  }
+
+  if (payload.autonomyHeartbeatEnabled !== undefined) {
+    runtime.autonomyHeartbeatEnabled = Boolean(payload.autonomyHeartbeatEnabled);
+    process.env.AUTONOMY_HEARTBEAT_ENABLED = runtime.autonomyHeartbeatEnabled ? "true" : "false";
+  }
+
+  if (payload.autoSwapEnabled !== undefined) {
+    runtime.autoSwapEnabled = Boolean(payload.autoSwapEnabled);
+    process.env.AUTO_SWAP_ENABLED = runtime.autoSwapEnabled ? "true" : "false";
+  }
+
+  if (payload.autoApproveLiveEnabled !== undefined) {
+    runtime.autoApproveLiveEnabled = Boolean(payload.autoApproveLiveEnabled);
+    process.env.AUTO_APPROVE_LIVE_ENABLED = runtime.autoApproveLiveEnabled ? "true" : "false";
+  }
+
+  if (payload.autoLiveDeployEnabled !== undefined) {
+    runtime.autoLiveDeployEnabled = Boolean(payload.autoLiveDeployEnabled);
+    process.env.AUTO_LIVE_DEPLOY_ENABLED = runtime.autoLiveDeployEnabled ? "true" : "false";
   }
 
   if (payload.scoreThreshold !== undefined) {
@@ -193,15 +308,94 @@ function updateRuntimeSettings(payload = {}) {
     process.env.CHALLENGER_RUN_ID = runtime.challengerRunId ? String(runtime.challengerRunId) : "";
   }
 
+  if (payload.regimeChampionTrendRunId !== undefined) {
+    runtime.regimeChampionTrendRunId = payload.regimeChampionTrendRunId ? Number(payload.regimeChampionTrendRunId) : null;
+    process.env.REGIME_CHAMPION_TREND_RUN_ID = runtime.regimeChampionTrendRunId ? String(runtime.regimeChampionTrendRunId) : "";
+  }
+
+  if (payload.regimeChampionSidewaysRunId !== undefined) {
+    runtime.regimeChampionSidewaysRunId = payload.regimeChampionSidewaysRunId ? Number(payload.regimeChampionSidewaysRunId) : null;
+    process.env.REGIME_CHAMPION_SIDEWAYS_RUN_ID = runtime.regimeChampionSidewaysRunId ? String(runtime.regimeChampionSidewaysRunId) : "";
+  }
+
+  if (payload.regimeChampionVolatileRunId !== undefined) {
+    runtime.regimeChampionVolatileRunId = payload.regimeChampionVolatileRunId ? Number(payload.regimeChampionVolatileRunId) : null;
+    process.env.REGIME_CHAMPION_VOLATILE_RUN_ID = runtime.regimeChampionVolatileRunId ? String(runtime.regimeChampionVolatileRunId) : "";
+  }
+
+  if (payload.approvedLiveRunId !== undefined) {
+    runtime.approvedLiveRunId = payload.approvedLiveRunId ? Number(payload.approvedLiveRunId) : null;
+    process.env.APPROVED_LIVE_RUN_ID = runtime.approvedLiveRunId ? String(runtime.approvedLiveRunId) : "";
+  }
+
   return getRuntimeSettings();
 }
 
-function buildPaperValidationMetadata() {
+function inferCurrentRegimeIdFromDebug(debug) {
+  const marketState = debug?.diagnostics?.marketState;
+  const multiTimeframe = debug?.diagnostics?.multiTimeframe;
+  const atrPercent = Number(marketState?.atrPercent || 0);
+  const minAtrPercent = Number(marketState?.minAtrPercent || 0);
+  const volatileThreshold = Math.max(minAtrPercent * 2, 0.8);
+
+  if (marketState?.isSideways) {
+    return "sideways";
+  }
+
+  if (atrPercent >= volatileThreshold) {
+    return "volatile";
+  }
+
+  if (multiTimeframe?.aligned) {
+    return "trend";
+  }
+
+  return "mixed";
+}
+
+function inferRegimeIdFromIndicators(indicators = {}) {
+  const marketState = indicators?.["15m"]?.marketState;
+  const multiTimeframe = indicators?.multiTimeframe;
+  const atrPercent = Number(marketState?.atrPercent || 0);
+  const minAtrPercent = Number(marketState?.minAtrPercent || 0);
+  const volatileThreshold = Math.max(minAtrPercent * 2, 0.8);
+
+  if (marketState?.isSideways) {
+    return "sideways";
+  }
+
+  if (atrPercent >= volatileThreshold) {
+    return "volatile";
+  }
+
+  if (multiTimeframe?.aligned) {
+    return "trend";
+  }
+
+  return "mixed";
+}
+
+function buildPaperValidationMetadata(currentRegimeId = null) {
+  const regimeChampionRunIds = {
+    trend: runtime.regimeChampionTrendRunId,
+    sideways: runtime.regimeChampionSidewaysRunId,
+    volatile: runtime.regimeChampionVolatileRunId
+  };
+  const activeRegimeChampionRunId =
+    currentRegimeId && regimeChampionRunIds[currentRegimeId]
+      ? regimeChampionRunIds[currentRegimeId]
+      : null;
+  const promotedRunId = activeRegimeChampionRunId || runtime.championRunId || runtime.approvedLiveRunId || null;
+
   return {
-    promotedRunId: runtime.championRunId || null,
+    promotedRunId,
     championRunId: runtime.championRunId || null,
     challengerRunId: runtime.challengerRunId || null,
-    slot: runtime.championRunId ? "champion" : null,
+    approvedLiveRunId: runtime.approvedLiveRunId || null,
+    slot: activeRegimeChampionRunId ? "regime_champion" : runtime.championRunId ? "champion" : null,
+    currentRegimeId: currentRegimeId || null,
+    activeRegimeChampionRunId,
+    regimeChampionRunIds,
     activeStrategies: String(process.env.ACTIVE_STRATEGIES || "")
       .split(",")
       .map((item) => item.trim())
@@ -342,16 +536,41 @@ function calculateLongestWinningStreak(trades = []) {
   return best;
 }
 
-async function getTradeStatistics() {
+async function getAllTradesForValidation() {
   const [closedTrades, cancelledTrades] = await Promise.all([
     TradeModel.listTrades({ status: "closed", limit: 1000 }),
     TradeModel.listTrades({ status: "cancelled", limit: 1000 })
   ]);
-  const trades = [...closedTrades, ...cancelledTrades].sort(
+
+  return [...closedTrades, ...cancelledTrades].sort(
     (left, right) => new Date(right.closed_at || right.opened_at) - new Date(left.closed_at || left.opened_at)
   );
+}
+
+runtime.getAllTradesForValidation = getAllTradesForValidation;
+
+async function getAutonomyStatus() {
+  return autonomousOperator.buildAutonomyStatus();
+}
+
+async function getTradeStatistics() {
+  const trades = await getAllTradesForValidation();
   const analytics = tradeAnalytics.computeStatistics(trades);
-  const paperValidation = await paperValidationService.buildSummary(trades);
+  let currentRegimeId = null;
+
+  try {
+    const debugSnapshot = await signalInspector.buildSignalDebugSnapshot({
+      pair: runtime.tradingPairs[0],
+      side: "BUY",
+      triggerSource: "auto"
+    });
+    currentRegimeId = inferCurrentRegimeIdFromDebug(debugSnapshot);
+  } catch (_error) {
+    currentRegimeId = null;
+  }
+
+  const paperValidation = await paperValidationService.buildSummary(trades, { currentRegimeId });
+  const autonomy = await getAutonomyStatus();
 
   return {
     totalTrades: analytics.totalTrades,
@@ -366,11 +585,16 @@ async function getTradeStatistics() {
     byRegime: analytics.byRegime,
     byStrategyRegime: analytics.byStrategyRegime,
     strategyRankingByPeriod: analytics.strategyRankingByPeriod,
-    paperValidation
+    paperValidation,
+    autonomy
   };
 }
 
 function getBotStatus() {
+  if (runtime.autoPauseReason) {
+    return "AUTO PAUSED";
+  }
+
   if (!runtime.botEnabled) {
     return "PAUSED";
   }
@@ -428,7 +652,9 @@ async function checkTradingPauseStatus() {
   if (!runtime.botEnabled) {
     return {
       allowed: false,
-      reason: "Bot is manually paused."
+      reason: runtime.autoPauseReason
+        ? `Bot is auto-paused: ${runtime.autoPauseReason}.`
+        : "Bot is manually paused."
     };
   }
 
@@ -476,6 +702,57 @@ async function checkBuyEntryAvailability(pair) {
   };
 }
 
+async function evaluateAutoExecutionPolicy(currentRegimeId) {
+  if (runtime.autonomyMode === "manual") {
+    return {
+      allowed: false,
+      reason: "Autonomous execution is disabled in manual mode."
+    };
+  }
+
+  if (runtime.tradingMode === "live" && runtime.autonomyMode !== "full_auto") {
+    return {
+      allowed: false,
+      reason: "Live autonomous execution requires full_auto mode."
+    };
+  }
+
+  if (runtime.tradingMode !== "live") {
+    return {
+      allowed: true,
+      paperValidation: null
+    };
+  }
+
+  const trades = await getAllTradesForValidation();
+  const summary = await paperValidationService.buildSummary(trades, { currentRegimeId });
+  const activeChampionRunId =
+    summary?.regimeGovernance?.activeChampionRunId ||
+    runtime.championRunId ||
+    null;
+
+  if (!summary?.approvalGate?.canApproveLive) {
+    return {
+      allowed: false,
+      reason: summary?.approvalGate?.reason || "Live readiness gate not passed.",
+      paperValidation: summary
+    };
+  }
+
+  if (!runtime.approvedLiveRunId || Number(runtime.approvedLiveRunId) !== Number(activeChampionRunId)) {
+    return {
+      allowed: false,
+      reason: "The active champion has not been approved for live autonomous trading yet.",
+      paperValidation: summary
+    };
+  }
+
+  return {
+    allowed: true,
+    paperValidation: summary
+  };
+}
+
 async function processSignal({
   pair,
   side,
@@ -485,12 +762,11 @@ async function processSignal({
 }) {
   const normalizedPair = String(pair || runtime.tradingPairs[0]).toUpperCase();
   const normalizedSide = String(side || "BUY").toUpperCase();
-  const enrichedMetadata = {
-    ...metadata,
-    tradingMode: executionEngine.getModeLabel(),
-    paperValidation: buildPaperValidationMetadata()
-  };
   const availability = await checkTradingPauseStatus();
+  const scoreMetadata = {
+    ...metadata,
+    tradingMode: executionEngine.getModeLabel()
+  };
 
   if (!availability.allowed) {
     return {
@@ -506,8 +782,22 @@ async function processSignal({
     triggerSource,
     candlesByTimeframe,
     scoreThreshold: runtime.scoreThreshold,
-    metadata: enrichedMetadata
+    metadata: scoreMetadata
   });
+  const currentRegimeId = inferRegimeIdFromIndicators(scoreResult.snapshots.indicators);
+  const availableCapitalState = await riskManager.getAvailableCapitalState();
+  const capitalAllocation = capitalAllocator.buildAllocationPlan({
+    currentRegimeId,
+    runtimeRiskPerTrade: runtime.riskPerTrade,
+    availableCapital: availableCapitalState.availableCapital,
+    reservedCapital: availableCapitalState.reservedCapital
+  });
+  const enrichedMetadata = {
+    ...scoreMetadata,
+    paperValidation: buildPaperValidationMetadata(currentRegimeId),
+    capitalAllocation,
+    autonomyMode: runtime.autonomyMode
+  };
 
   if (scoreResult.snapshots.sentiment?.evaluations?.fearGreed?.allowed === false) {
     return {
@@ -530,6 +820,32 @@ async function processSignal({
   }
 
   const runtimeDecision = determineRuntimeDecision(scoreResult.score.totalScore);
+
+  if (triggerSource === "auto" && metadata.shadowModeExecutionIntent === "shadow_only") {
+    return {
+      ok: true,
+      action: runtimeDecision === "EXECUTE" && !executionGuards.blocked ? "shadow_ready" : "shadow_blocked",
+      reason:
+        runtimeDecision === "EXECUTE" && !executionGuards.blocked
+          ? "Shadow mode found an executable setup."
+          : executionGuards.reason || scoreResult.score.reason,
+      score: scoreResult.score,
+      regimeId: currentRegimeId
+    };
+  }
+
+  if (triggerSource === "auto") {
+    const autoExecutionPolicy = await evaluateAutoExecutionPolicy(currentRegimeId);
+
+    if (!autoExecutionPolicy.allowed) {
+      return {
+        ok: false,
+        action: "blocked",
+        reason: autoExecutionPolicy.reason,
+        score: scoreResult.score
+      };
+    }
+  }
 
   if (runtimeDecision === "IGNORE") {
     return {
@@ -583,7 +899,10 @@ async function processSignal({
     scoreResult,
     triggerSource,
     metadata: enrichedMetadata,
-    buildTradeRiskPlan: (payload) => riskManager.buildTradeRiskPlan(payload)
+    buildTradeRiskPlan: (payload) => riskManager.buildTradeRiskPlan({
+      ...payload,
+      riskPerTradeOverride: capitalAllocation.effectiveRiskPerTrade
+    })
   });
 }
 
@@ -634,8 +953,12 @@ async function reconcileExchangeTrades() {
           });
         }
       }
+
+      circuitBreaker.recordSuccess("exchange");
     } catch (error) {
       console.error(`Exchange reconciliation failed for ${pair}: ${error.message}`);
+      // eslint-disable-next-line no-await-in-loop
+      await circuitBreaker.recordFailure("exchange", error, { pair });
     }
   }
 }
@@ -668,6 +991,7 @@ const context = {
   buildSignalDebugSnapshot: (payload) => signalInspector.buildSignalDebugSnapshot(payload),
   getCapitalHistory,
   getTradeStatistics,
+  getAutonomyStatus,
   backtester: backtesterService,
   reporter: reporterService,
   paperValidationService,
@@ -675,14 +999,23 @@ const context = {
   updateRuntimeSettings
 };
 
-app.get("/health", async (_req, res) => {
-  const dashboard = await dashboardBuilder.buildDashboardSnapshot();
+reporterService.setProviders({
+  getPaperValidationSummary: async () => {
+    const trades = await getAllTradesForValidation();
+    const currentRegimeId = await autonomousOperator.resolveCurrentRegimeId();
+    return paperValidationService.buildSummary(trades, { currentRegimeId });
+  },
+  getAutonomyStatus
+});
 
-  res.json({
-    ok: true,
-    status: "ok",
-    botStatus: dashboard.botStatus,
-    service: "trading-bot-backend"
+app.get("/health", async (_req, res) => {
+  const snapshot = await healthMonitor.buildHealthSnapshot();
+
+  res.status(snapshot.ok ? 200 : 503).json({
+    ok: snapshot.ok,
+    status: snapshot.ok ? "ok" : "degraded",
+    service: "trading-bot-backend",
+    ...snapshot
   });
 });
 
@@ -695,9 +1028,10 @@ app.use("/api/backtest", createBacktestRouter(context));
 async function startServer() {
   await db.initDatabase();
   await ensureInitialCapitalSnapshot();
+  runtime.startupStatus = await startupGuard.run();
 
   cron.schedule("*/5 * * * *", async () => {
-    await strategyRunner.runAutoScan();
+    await autonomousOperator.runAutonomousLoop();
   });
 
   cron.schedule("*/5 * * * *", async () => {
@@ -722,8 +1056,30 @@ async function startServer() {
   });
 
   cron.schedule("15 * * * *", async () => {
+    let currentRegimeId = null;
+
+    try {
+      const debugSnapshot = await signalInspector.buildSignalDebugSnapshot({
+        pair: runtime.tradingPairs[0],
+        side: "BUY",
+        triggerSource: "auto"
+      });
+      currentRegimeId = inferCurrentRegimeIdFromDebug(debugSnapshot);
+    } catch (_error) {
+      currentRegimeId = null;
+    }
+
     await paperValidationMonitor.monitorChampion();
-    await paperValidationMonitor.monitorRecommendations();
+    await paperValidationMonitor.monitorRecommendations(currentRegimeId);
+    await paperValidationMonitor.monitorAutoGovernance(currentRegimeId);
+  });
+
+  cron.schedule("0 */6 * * *", async () => {
+    await autonomousOperator.monitorDailyLoop();
+  });
+
+  cron.schedule("*/10 * * * *", async () => {
+    runtime.healthSnapshot = await healthMonitor.buildHealthSnapshot();
   });
 
   cron.schedule("55 23 * * *", async () => {
