@@ -495,6 +495,7 @@ async function simulateBacktestRange({
   pair = "BTCUSDT",
   dateFrom,
   dateTo,
+  lookbackFrom = null,
   timeframe = "15m",
   activeStrategies,
   startingCapital = Number(process.env.INITIAL_CAPITAL || 100),
@@ -512,6 +513,9 @@ async function simulateBacktestRange({
 
   const startTime = new Date(dateFrom).getTime();
   const endTime = new Date(dateTo).getTime();
+  // lookbackFrom allows fetching extra historical candles for indicator warmup
+  // without entering trades before startTime
+  const fetchFrom = lookbackFrom ? new Date(lookbackFrom).getTime() : startTime;
 
   if (Number.isNaN(startTime) || Number.isNaN(endTime) || startTime >= endTime) {
     throw new Error("Invalid backtest date range.");
@@ -520,10 +524,10 @@ async function simulateBacktestRange({
   const signalTimeframe = timeframe;
   const strategies = strategyRegistry.getStrategies(activeStrategies);
   const [candles5m, signalCandles, candles1h, candles4h] = await Promise.all([
-    binanceService.getAllCandles(pair, "5m", { startTime, endTime }),
-    binanceService.getAllCandles(pair, signalTimeframe, { startTime, endTime }),
-    binanceService.getAllCandles(pair, "1h", { startTime, endTime }),
-    binanceService.getAllCandles(pair, "4h", { startTime, endTime })
+    binanceService.getAllCandles(pair, "5m", { startTime: fetchFrom, endTime }),
+    binanceService.getAllCandles(pair, signalTimeframe, { startTime: fetchFrom, endTime }),
+    binanceService.getAllCandles(pair, "1h", { startTime: fetchFrom, endTime }),
+    binanceService.getAllCandles(pair, "4h", { startTime: fetchFrom, endTime })
   ]);
 
   let capitalState = {
@@ -586,6 +590,16 @@ async function simulateBacktestRange({
     });
 
     openPositions = remainingPositions;
+
+    // During lookback warmup period don't enter new trades — only collect indicators
+    if (closeTimestamp < startTime) {
+      capitalCurve.push({
+        timestamp: new Date(closeTimestamp).toISOString(),
+        capital: capitalState.capital + capitalState.realizedProfit
+      });
+      continue;
+    }
+
     // eslint-disable-next-line no-await-in-loop
     const strategyCandidates = await collectStrategyCandidates({
       pair,
@@ -835,12 +849,17 @@ async function runWalkForwardBacktest({
       slippageBps
     });
 
+    // Lookback = 35 days before test start so 1h (200h≈8d) and 4h (200×4h≈33d)
+    // indicators are fully warmed up before the test window begins.
+    const testLookbackFrom = toIsoDate(addDays(testStart, -35));
+
     // eslint-disable-next-line no-await-in-loop
     const outOfSample = await simulateBacktestRange({
       pair,
       timeframe,
       dateFrom: toIsoDate(testStart),
       dateTo: toIsoDate(testEnd),
+      lookbackFrom: testLookbackFrom,
       activeStrategies,
       startingCapital: rollingCapital,
       scoreThreshold,
