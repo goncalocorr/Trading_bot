@@ -118,6 +118,7 @@ module.exports = function createDashboardRouter(context) {
       body("autoSwapEnabled").optional().isBoolean(),
       body("autoApproveLiveEnabled").optional().isBoolean(),
       body("autoLiveDeployEnabled").optional().isBoolean(),
+      body("notificationLocale").optional().isIn(["en", "pt-PT"]),
       body("scoreThreshold").optional().isInt({ min: 1, max: 12 }),
       body("riskPerTrade").optional().isFloat({ min: 0.001, max: 0.1 }),
       body("compoundRatio").optional().isFloat({ min: 0, max: 1 }),

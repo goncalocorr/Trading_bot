@@ -1,6 +1,4 @@
-function formatTimestamp(value) {
-  return value ? new Date(value).toLocaleString() : "n/a";
-}
+import { useI18n } from "../i18n/I18nProvider";
 
 function InfoCard({ label, value, detail = null, accent = "text-white" }) {
   return (
@@ -13,6 +11,7 @@ function InfoCard({ label, value, detail = null, accent = "text-white" }) {
 }
 
 function SettingsPanel({ settings, form, onChange, onSave, saving = false, strategies = [] }) {
+  const { t, formatDateTime } = useI18n();
   const regimeChampionDetail = [
     settings?.regimeChampionTrendRunId ? `trend #${settings.regimeChampionTrendRunId}` : null,
     settings?.regimeChampionSidewaysRunId ? `sideways #${settings.regimeChampionSidewaysRunId}` : null,
@@ -24,10 +23,8 @@ function SettingsPanel({ settings, form, onChange, onSave, saving = false, strat
   return (
     <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
       <div className="mb-5">
-        <h2 className="text-xl font-semibold text-white">Settings</h2>
-        <p className="mt-1 text-sm text-slate-300">
-          Runtime controls for bot state, score threshold, risk and tracked pairs.
-        </p>
+        <h2 className="text-xl font-semibold text-white">{t("settings.title")}</h2>
+        <p className="mt-1 text-sm text-slate-300">{t("settings.subtitle")}</p>
       </div>
 
       <form
@@ -38,104 +35,116 @@ function SettingsPanel({ settings, form, onChange, onSave, saving = false, strat
         }}
       >
         <label className="flex flex-col gap-2 text-sm text-slate-200">
-          Bot enabled
+          {t("settings.botEnabled")}
           <select
             value={String(form.botEnabled)}
             onChange={(event) => onChange("botEnabled", event.target.value === "true")}
             className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
           >
-            <option value="true">Enabled</option>
-            <option value="false">Paused</option>
+            <option value="true">{t("common.enabled")}</option>
+            <option value="false">{t("settings.paused")}</option>
           </select>
         </label>
 
         <label className="flex flex-col gap-2 text-sm text-slate-200">
-          Trading mode
+          {t("settings.tradingMode")}
           <select
             value={form.tradingMode}
             onChange={(event) => onChange("tradingMode", event.target.value)}
             className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
           >
-            <option value="paper">Paper</option>
-            <option value="live">Live</option>
+            <option value="paper">{t("settings.paper")}</option>
+            <option value="live">{t("settings.live")}</option>
           </select>
         </label>
 
         <label className="flex flex-col gap-2 text-sm text-slate-200">
-          Autonomy mode
+          {t("settings.autonomyMode")}
           <select
             value={form.autonomyMode}
             onChange={(event) => onChange("autonomyMode", event.target.value)}
             className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
           >
-            <option value="manual">Manual</option>
-            <option value="supervised_auto">Supervised auto</option>
-            <option value="full_auto">Full auto</option>
+            <option value="manual">{t("settings.manual")}</option>
+            <option value="supervised_auto">{t("settings.supervisedAuto")}</option>
+            <option value="full_auto">{t("settings.fullAuto")}</option>
           </select>
         </label>
 
         <label className="flex flex-col gap-2 text-sm text-slate-200">
-          Shadow mode
+          {t("settings.shadowMode")}
           <select
             value={String(form.shadowModeEnabled)}
             onChange={(event) => onChange("shadowModeEnabled", event.target.value === "true")}
             className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
           >
-            <option value="false">Disabled</option>
-            <option value="true">Enabled</option>
+            <option value="false">{t("common.disabled")}</option>
+            <option value="true">{t("common.enabled")}</option>
           </select>
         </label>
 
         <label className="flex flex-col gap-2 text-sm text-slate-200">
-          Heartbeat alerts
+          {t("settings.heartbeatAlerts")}
           <select
             value={String(form.autonomyHeartbeatEnabled)}
             onChange={(event) => onChange("autonomyHeartbeatEnabled", event.target.value === "true")}
             className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
           >
-            <option value="false">Disabled</option>
-            <option value="true">Enabled</option>
+            <option value="false">{t("common.disabled")}</option>
+            <option value="true">{t("common.enabled")}</option>
           </select>
         </label>
 
         <label className="flex flex-col gap-2 text-sm text-slate-200">
-          Auto-swap champion
+          {t("settings.telegramLanguage")}
+          <select
+            value={form.notificationLocale}
+            onChange={(event) => onChange("notificationLocale", event.target.value)}
+            className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
+          >
+            <option value="en">{t("language.english")}</option>
+            <option value="pt-PT">{t("language.portuguese")}</option>
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-2 text-sm text-slate-200">
+          {t("settings.autoSwap")}
           <select
             value={String(form.autoSwapEnabled)}
             onChange={(event) => onChange("autoSwapEnabled", event.target.value === "true")}
             className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
           >
-            <option value="false">Disabled</option>
-            <option value="true">Enabled</option>
+            <option value="false">{t("common.disabled")}</option>
+            <option value="true">{t("common.enabled")}</option>
           </select>
         </label>
 
         <label className="flex flex-col gap-2 text-sm text-slate-200">
-          Auto-approve live
+          {t("settings.autoApprove")}
           <select
             value={String(form.autoApproveLiveEnabled)}
             onChange={(event) => onChange("autoApproveLiveEnabled", event.target.value === "true")}
             className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
           >
-            <option value="false">Disabled</option>
-            <option value="true">Enabled</option>
+            <option value="false">{t("common.disabled")}</option>
+            <option value="true">{t("common.enabled")}</option>
           </select>
         </label>
 
         <label className="flex flex-col gap-2 text-sm text-slate-200">
-          Auto-live deploy
+          {t("settings.autoLiveDeploy")}
           <select
             value={String(form.autoLiveDeployEnabled)}
             onChange={(event) => onChange("autoLiveDeployEnabled", event.target.value === "true")}
             className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
           >
-            <option value="false">Disabled</option>
-            <option value="true">Enabled</option>
+            <option value="false">{t("common.disabled")}</option>
+            <option value="true">{t("common.enabled")}</option>
           </select>
         </label>
 
         <label className="flex flex-col gap-2 text-sm text-slate-200">
-          Score threshold
+          {t("settings.scoreThreshold")}
           <input
             type="number"
             min="1"
@@ -147,7 +156,7 @@ function SettingsPanel({ settings, form, onChange, onSave, saving = false, strat
         </label>
 
         <label className="flex flex-col gap-2 text-sm text-slate-200">
-          Risk per trade
+          {t("settings.riskPerTrade")}
           <input
             type="number"
             step="0.001"
@@ -158,7 +167,7 @@ function SettingsPanel({ settings, form, onChange, onSave, saving = false, strat
         </label>
 
         <label className="flex flex-col gap-2 text-sm text-slate-200">
-          Compound ratio
+          {t("settings.compoundRatio")}
           <input
             type="number"
             step="0.01"
@@ -171,7 +180,7 @@ function SettingsPanel({ settings, form, onChange, onSave, saving = false, strat
         </label>
 
         <label className="md:col-span-2 flex flex-col gap-2 text-sm text-slate-200">
-          Trading pairs
+          {t("settings.tradingPairs")}
           <input
             value={form.tradingPairs}
             onChange={(event) => onChange("tradingPairs", event.target.value)}
@@ -181,7 +190,7 @@ function SettingsPanel({ settings, form, onChange, onSave, saving = false, strat
         </label>
 
         <div className="md:col-span-2 rounded-[22px] border border-white/10 bg-slate-950/45 p-4">
-          <p className="text-sm text-slate-200">Active strategies</p>
+          <p className="text-sm text-slate-200">{t("settings.activeStrategies")}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {strategies.map((strategy) => {
               const selected = Array.isArray(form.activeStrategies) && form.activeStrategies.includes(strategy.id);
@@ -215,7 +224,7 @@ function SettingsPanel({ settings, form, onChange, onSave, saving = false, strat
           type="submit"
           className="md:col-span-2 rounded-2xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-emerald-200"
         >
-          {saving ? "Saving settings..." : "Save settings"}
+          {saving ? t("common.savingSettings") : t("common.saveSettings")}
         </button>
       </form>
 
@@ -223,61 +232,61 @@ function SettingsPanel({ settings, form, onChange, onSave, saving = false, strat
         <div className="mt-5 space-y-4">
           <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
             <div className="mb-4">
-              <h3 className="text-lg font-semibold text-white">Operational Snapshot</h3>
-              <p className="mt-1 text-sm text-slate-300">
-                Clean runtime view of autonomy, governance and recovery state.
-              </p>
+              <h3 className="text-lg font-semibold text-white">{t("settings.operationalSnapshot")}</h3>
+              <p className="mt-1 text-sm text-slate-300">{t("settings.operationalSnapshotHint")}</p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <InfoCard
-                label="Bot"
-                value={settings.botEnabled ? "Enabled" : "Paused"}
-                detail={settings.autoPauseReason ? `Auto pause: ${settings.autoPauseReason}` : "No active pause reason."}
+                label={t("settings.bot")}
+                value={settings.botEnabled ? t("common.enabled") : t("settings.paused")}
+                detail={settings.autoPauseReason ? t("settings.autoPause", { reason: settings.autoPauseReason }) : t("settings.noActivePauseReason")}
                 accent={settings.botEnabled ? "text-emerald-300" : "text-amber-300"}
               />
               <InfoCard
-                label="Trading"
+                label={t("settings.trading")}
                 value={(settings.tradingMode || "paper").toUpperCase()}
-                detail={`Autonomy: ${settings.autonomyMode || "manual"}`}
+                detail={`${t("settings.autonomyLabel")}: ${settings.autonomyMode || "manual"} | ${t("settings.telegramLanguage")}: ${
+                  settings.notificationLocale === "pt-PT" ? t("language.portuguese") : t("language.english")
+                }`}
                 accent={settings.tradingMode === "live" ? "text-rose-300" : "text-sky-300"}
               />
               <InfoCard
-                label="Champion"
-                value={settings.championRunId ? `Run #${settings.championRunId}` : "None"}
-                detail={settings.challengerRunId ? `Challenger: #${settings.challengerRunId}` : "No challenger assigned."}
+                label={t("settings.champion")}
+                value={settings.championRunId ? `Run #${settings.championRunId}` : t("common.none")}
+                detail={settings.challengerRunId ? `Challenger: #${settings.challengerRunId}` : t("settings.noChallengerAssigned")}
                 accent="text-cyan-200"
               />
               <InfoCard
-                label="Live Approval"
-                value={settings.approvedLiveRunId ? `Run #${settings.approvedLiveRunId}` : "Not approved"}
-                detail={settings.autoLiveDeployEnabled ? "Auto-live deploy enabled." : "Manual live deployment only."}
+                label={t("settings.liveApproval")}
+                value={settings.approvedLiveRunId ? `Run #${settings.approvedLiveRunId}` : t("settings.notApproved")}
+                detail={settings.autoLiveDeployEnabled ? t("settings.autoLiveEnabled") : t("settings.manualLiveOnly")}
                 accent={settings.approvedLiveRunId ? "text-emerald-300" : "text-slate-200"}
               />
             </div>
 
             <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <InfoCard
-                label="Regime Champions"
-                value={regimeChampionDetail || "Not assigned"}
-                detail="Per-regime champion slots used by adaptive governance."
+                label={t("settings.regimeChampions")}
+                value={regimeChampionDetail || t("settings.notAssigned")}
+                detail={t("settings.regimeChampionsHint")}
                 accent="text-white"
               />
               <InfoCard
-                label="Active Strategies"
-                value={Array.isArray(settings.activeStrategies) && settings.activeStrategies.length > 0 ? settings.activeStrategies.join(", ") : "None"}
-                detail={`Pairs: ${(settings.tradingPairs || []).join(", ") || "n/a"}`}
+                label={t("settings.activeStrategiesCard")}
+                value={Array.isArray(settings.activeStrategies) && settings.activeStrategies.length > 0 ? settings.activeStrategies.join(", ") : t("common.none")}
+                detail={t("settings.pairsDetail", { pairs: (settings.tradingPairs || []).join(", ") || t("common.notAvailable") })}
                 accent="text-white"
               />
               <InfoCard
-                label="Autonomy Flags"
+                label={t("settings.autonomyFlags")}
                 value={[
                   settings.shadowModeEnabled ? "shadow" : null,
                   settings.autoSwapEnabled ? "auto-swap" : null,
                   settings.autoApproveLiveEnabled ? "auto-approve" : null,
                   settings.autonomyHeartbeatEnabled ? "heartbeat" : null
-                ].filter(Boolean).join(" | ") || "All disabled"}
-                detail="Feature flags for supervised and full-auto behaviour."
+                ].filter(Boolean).join(" | ") || t("settings.allDisabled")}
+                detail={t("settings.autonomyFlagsHint")}
                 accent="text-white"
               />
             </div>
@@ -285,46 +294,47 @@ function SettingsPanel({ settings, form, onChange, onSave, saving = false, strat
 
           <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
             <div className="mb-4">
-              <h3 className="text-lg font-semibold text-white">Recovery And Health</h3>
-              <p className="mt-1 text-sm text-slate-300">
-                Quick visibility into circuit breakers, last autonomy snapshot and startup recovery.
-              </p>
+              <h3 className="text-lg font-semibold text-white">{t("settings.recoveryHealth")}</h3>
+              <p className="mt-1 text-sm text-slate-300">{t("settings.recoveryHealthHint")}</p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <InfoCard
-                label="Execution Failures"
+                label={t("settings.executionFailures")}
                 value={String(settings.circuitBreakers?.executionFailures || 0)}
-                detail={settings.circuitBreakers?.lastReason ? `Last reason: ${settings.circuitBreakers.lastReason}` : "No breaker reason recorded."}
+                detail={settings.circuitBreakers?.lastReason ? `Last reason: ${settings.circuitBreakers.lastReason}` : t("settings.noBreakerReason")}
                 accent="text-amber-300"
               />
               <InfoCard
-                label="Exchange Failures"
+                label={t("settings.exchangeFailures")}
                 value={String(settings.circuitBreakers?.exchangeFailures || 0)}
-                detail={settings.circuitBreakers?.lastTriggeredAt ? `Triggered: ${formatTimestamp(settings.circuitBreakers.lastTriggeredAt)}` : "Never triggered."}
+                detail={settings.circuitBreakers?.lastTriggeredAt ? `Triggered: ${formatDateTime(settings.circuitBreakers.lastTriggeredAt)}` : t("settings.neverTriggered")}
                 accent="text-rose-300"
               />
               <InfoCard
-                label="Last Autonomy Snapshot"
-                value={settings.lastAutonomySnapshot?.currentRegimeId || "n/a"}
-                detail={settings.lastAutonomySnapshot?.updatedAt ? formatTimestamp(settings.lastAutonomySnapshot.updatedAt) : "No autonomy snapshot yet."}
+                label={t("settings.lastAutonomySnapshot")}
+                value={settings.lastAutonomySnapshot?.currentRegimeId || t("common.notAvailable")}
+                detail={settings.lastAutonomySnapshot?.updatedAt ? formatDateTime(settings.lastAutonomySnapshot.updatedAt) : t("settings.noAutonomySnapshot")}
                 accent="text-sky-300"
               />
               <InfoCard
-                label="Shadow Summary"
-                value={settings.shadowLastSummary?.strategySelection?.source || "n/a"}
-                detail={settings.shadowLastSummary?.ranAt ? formatTimestamp(settings.shadowLastSummary.ranAt) : "Shadow scan has not run yet."}
+                label={t("settings.shadowSummary")}
+                value={settings.shadowLastSummary?.strategySelection?.source || t("common.notAvailable")}
+                detail={settings.shadowLastSummary?.ranAt ? formatDateTime(settings.shadowLastSummary.ranAt) : t("settings.shadowNotRun")}
                 accent="text-fuchsia-300"
               />
             </div>
 
             <div className="mt-4 rounded-[20px] border border-white/10 bg-slate-950/60 p-4">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Startup Status</p>
+              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{t("settings.startupStatus")}</p>
               <p className="mt-2 text-sm font-semibold text-white">
-                {settings.startupStatus?.overallOk ? "Startup checks passed" : "Startup checks pending or degraded"}
+                {settings.startupStatus?.overallOk ? t("settings.startupPassed") : t("settings.startupPending")}
               </p>
               <p className="mt-1 text-xs text-slate-400">
-                Strict mode: {settings.startupStatus?.strictMode ? "enabled" : "disabled"} | Last run: {formatTimestamp(settings.startupStatus?.ranAt)}
+                {t("settings.strictMode", {
+                  mode: settings.startupStatus?.strictMode ? t("settings.modeEnabled") : t("settings.modeDisabled"),
+                  time: formatDateTime(settings.startupStatus?.ranAt)
+                })}
               </p>
             </div>
           </div>

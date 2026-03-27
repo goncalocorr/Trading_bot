@@ -14,6 +14,7 @@ class RuntimePersistenceService {
       "autoSwapEnabled",
       "autoApproveLiveEnabled",
       "autoLiveDeployEnabled",
+      "notificationLocale",
       "scoreThreshold",
       "riskPerTrade",
       "compoundRatio",
@@ -40,6 +41,10 @@ class RuntimePersistenceService {
   normalizeAutonomyMode(value, fallback = "manual") {
     const normalized = String(value || fallback).toLowerCase();
     return ["manual", "supervised_auto", "full_auto"].includes(normalized) ? normalized : fallback;
+  }
+
+  normalizeNotificationLocale(value, fallback = "en") {
+    return String(value || fallback).toLowerCase() === "pt-pt" ? "pt-PT" : "en";
   }
 
   async hydrateRuntime(runtime) {
@@ -79,11 +84,17 @@ class RuntimePersistenceService {
         continue;
       }
 
+      if (key === "notificationLocale") {
+        runtime.notificationLocale = this.normalizeNotificationLocale(persisted[key], runtime.notificationLocale || "en");
+        continue;
+      }
+
       runtime[key] = persisted[key];
     }
 
     process.env.TRADING_MODE = this.normalizeTradingMode(runtime.tradingMode, "paper");
     process.env.AUTONOMY_MODE = this.normalizeAutonomyMode(runtime.autonomyMode, "manual");
+    process.env.TELEGRAM_NOTIFICATION_LOCALE = this.normalizeNotificationLocale(runtime.notificationLocale, "en");
 
     if (persisted.shadowModeEnabled !== undefined) {
       process.env.SHADOW_MODE_ENABLED = runtime.shadowModeEnabled ? "true" : "false";
@@ -166,6 +177,7 @@ class RuntimePersistenceService {
       autoSwapEnabled: Boolean(runtime.autoSwapEnabled),
       autoApproveLiveEnabled: Boolean(runtime.autoApproveLiveEnabled),
       autoLiveDeployEnabled: Boolean(runtime.autoLiveDeployEnabled),
+      notificationLocale: this.normalizeNotificationLocale(runtime.notificationLocale, "en"),
       scoreThreshold: Number(runtime.scoreThreshold),
       riskPerTrade: Number(runtime.riskPerTrade),
       compoundRatio: Number(runtime.compoundRatio),

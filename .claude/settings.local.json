@@ -5,7 +5,18 @@
       "Bash(wc -l /c/Users/saloc/Documents/trading-bot/backend/models/*.js)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(npm --prefix backend run test)"
+      "Bash(npm --prefix backend run test)",
+      "Bash(node -e \":*)",
+      "Bash(node:*)",
+      "Bash(npm test:*)",
+      "Bash(cd:*)",
+      "Bash(find C:UserssalocDocumentstrading-botbackend -name *.env* -o -name config.*)",
+      "Bash(grep -E '\"\"start\"\"|\"\"dev\"\"' package.json)",
+      "Bash(npm run:*)",
+      "Bash(git push:*)",
+      "Bash(xargs grep:*)",
+      "Bash(node -e \"require\\(''''./scripts/sync_runtime_from_env.js''''\\)\")",
+      "Bash(node -e \"require\\(''''./scripts/compare_pairs.js''''\\)\" --check)"
     ]
   }
 }

@@ -109,6 +109,17 @@ TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
 ```
 
+7. Optional: choose the Telegram notification language:
+
+```env
+TELEGRAM_NOTIFICATION_LOCALE=en
+```
+
+Supported values:
+
+- `en`
+- `pt-PT`
+
 ## TradingView Webhook Setup
 
 1. Create an alert in TradingView.

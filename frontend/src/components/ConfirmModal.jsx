@@ -1,4 +1,8 @@
+import { useI18n } from "../i18n/I18nProvider";
+
 function ConfirmModal({ open, title, message, confirmLabel = "Confirm", confirmClass = "", onConfirm, onCancel }) {
+  const { t } = useI18n();
+
   if (!open) return null;
 
   return (
@@ -13,7 +17,7 @@ function ConfirmModal({ open, title, message, confirmLabel = "Confirm", confirmC
             onClick={onCancel}
             className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"

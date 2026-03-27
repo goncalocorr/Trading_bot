@@ -37,20 +37,32 @@ function evaluateRsi(signalSide, indicatorSnapshot, signalTimeframe = "15m", str
   };
 }
 
-function evaluateEmaTrend(signalSide, indicatorSnapshot, signalTimeframe = "15m") {
+function evaluateEmaTrend(signalSide, indicatorSnapshot, signalTimeframe = "15m", strategyId = "") {
   const trend = indicatorSnapshot?.[signalTimeframe]?.trend;
   const normalizedSide = normalizeSide(signalSide);
   const bullish = trend?.goldenCross && trend?.priceAboveEma200;
   const bearish = trend?.deathCross && !trend?.priceAboveEma200;
-  const confirms = (normalizedSide === "BUY" && bullish) || (normalizedSide === "SELL" && bearish);
+  const isMeanReversion = strategyId === "mean_reversion";
+  const structurallyHostile =
+    (normalizedSide === "BUY" && bearish) ||
+    (normalizedSide === "SELL" && bullish);
+  const confirms = isMeanReversion
+    ? !structurallyHostile
+    : (normalizedSide === "BUY" && bullish) || (normalizedSide === "SELL" && bearish);
+  const points = isMeanReversion
+    ? confirms ? 1 : 0
+    : confirms ? 2 : 0;
 
   return {
-    label: "EMA trend confirms signal direction",
-    points: confirms ? 2 : 0,
+    label: isMeanReversion
+      ? "EMA structure not hostile to mean reversion"
+      : "EMA trend confirms signal direction",
+    points,
     maxPoints: 2,
     passed: confirms,
     details: {
       signalSide: normalizedSide,
+      strategyId: strategyId || "default",
       bias: trend?.bias || "neutral",
       ema9: trend?.ema9,
       ema21: trend?.ema21,
@@ -61,15 +73,24 @@ function evaluateEmaTrend(signalSide, indicatorSnapshot, signalTimeframe = "15m"
   };
 }
 
-function evaluateMultiTimeframe(signalSide, indicatorSnapshot) {
+function evaluateMultiTimeframe(signalSide, indicatorSnapshot, strategyId = "") {
   const multiTimeframe = indicatorSnapshot?.multiTimeframe;
   const normalizedSide = normalizeSide(signalSide);
+  const isMeanReversion = strategyId === "mean_reversion";
+  const oppositeSide = normalizedSide === "BUY" ? "SELL" : "BUY";
   const fullAlignment = multiTimeframe?.aligned && multiTimeframe?.direction === normalizedSide;
   const partialAlignment = !fullAlignment && multiTimeframe?.aligned1h && multiTimeframe?.direction1h === normalizedSide;
-  const points = fullAlignment ? 2 : partialAlignment ? 1 : 0;
+  const stronglyOpposed =
+    Boolean(multiTimeframe?.aligned && multiTimeframe?.direction === oppositeSide) &&
+    Boolean(multiTimeframe?.aligned1h && multiTimeframe?.direction1h === oppositeSide);
+  const points = isMeanReversion
+    ? stronglyOpposed ? 0 : 1
+    : fullAlignment ? 2 : partialAlignment ? 1 : 0;
 
   return {
-    label: "Multi-timeframe alignment (1H + 4H)",
+    label: isMeanReversion
+      ? "Higher timeframes not strongly hostile"
+      : "Multi-timeframe alignment (1H + 4H)",
     points,
     maxPoints: 2,
     passed: points > 0,
@@ -218,8 +239,8 @@ function computeScoreBreakdown({
 }) {
   const breakdownItems = [
     evaluateRsi(signalSide, indicatorSnapshot, signalTimeframe, strategyId),
-    evaluateEmaTrend(signalSide, indicatorSnapshot, signalTimeframe),
-    evaluateMultiTimeframe(signalSide, indicatorSnapshot),
+    evaluateEmaTrend(signalSide, indicatorSnapshot, signalTimeframe, strategyId),
+    evaluateMultiTimeframe(signalSide, indicatorSnapshot, strategyId),
     evaluateVolume(indicatorSnapshot, signalTimeframe),
     evaluateFearGreed(sentimentSnapshot),
     evaluateNews(sentimentSnapshot),

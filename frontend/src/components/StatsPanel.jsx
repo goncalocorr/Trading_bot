@@ -1,3 +1,5 @@
+import { useI18n } from "../i18n/I18nProvider";
+
 function StatCard({ label, value, accent = "text-emerald-300" }) {
   return (
     <div className="rounded-[24px] border border-white/10 bg-slate-950/40 p-5">
@@ -42,6 +44,7 @@ function formatWhen(value) {
 }
 
 function StatsPanel({ stats }) {
+  const { t } = useI18n();
   const byStrategy = Array.isArray(stats?.byStrategy) ? stats.byStrategy : [];
   const byRegime = Array.isArray(stats?.byRegime) ? stats.byRegime : [];
   const byStrategyRegime = Array.isArray(stats?.byStrategyRegime) ? stats.byStrategyRegime.slice(0, 6) : [];
@@ -55,21 +58,19 @@ function StatsPanel({ stats }) {
   return (
     <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
       <div className="mb-5">
-        <h2 className="text-xl font-semibold text-white">Statistics</h2>
-        <p className="mt-1 text-sm text-slate-300">
-          Win rate, trade quality and simple risk-adjusted performance.
-        </p>
+        <h2 className="text-xl font-semibold text-white">{t("stats.title")}</h2>
+        <p className="mt-1 text-sm text-slate-300">{t("stats.subtitle")}</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Win Rate" value={`${formatNumber(stats?.winRate)}%`} />
-        <StatCard label="Total Trades" value={String(stats?.totalTrades || 0)} accent="text-sky-300" />
-        <StatCard label="Avg Profit" value={formatNumber(stats?.avgProfitPerTrade)} accent="text-emerald-300" />
-        <StatCard label="Avg Loss" value={formatNumber(stats?.avgLossPerTrade)} accent="text-rose-300" />
-        <StatCard label="Best Trade" value={formatNumber(stats?.bestTrade?.result_pnl)} accent="text-emerald-300" />
-        <StatCard label="Worst Trade" value={formatNumber(stats?.worstTrade?.result_pnl)} accent="text-rose-300" />
-        <StatCard label="Win Streak" value={String(stats?.longestWinningStreak || 0)} accent="text-amber-300" />
-        <StatCard label="Sharpe Ratio" value={formatNumber(stats?.sharpeRatio)} accent="text-fuchsia-300" />
+        <StatCard label={t("stats.winRate")} value={`${formatNumber(stats?.winRate)}%`} />
+        <StatCard label={t("stats.totalTrades")} value={String(stats?.totalTrades || 0)} accent="text-sky-300" />
+        <StatCard label={t("stats.avgProfit")} value={formatNumber(stats?.avgProfitPerTrade)} accent="text-emerald-300" />
+        <StatCard label={t("stats.avgLoss")} value={formatNumber(stats?.avgLossPerTrade)} accent="text-rose-300" />
+        <StatCard label={t("stats.bestTrade")} value={formatNumber(stats?.bestTrade?.result_pnl)} accent="text-emerald-300" />
+        <StatCard label={t("stats.worstTrade")} value={formatNumber(stats?.worstTrade?.result_pnl)} accent="text-rose-300" />
+        <StatCard label={t("stats.winStreak")} value={String(stats?.longestWinningStreak || 0)} accent="text-amber-300" />
+        <StatCard label={t("stats.sharpeRatio")} value={formatNumber(stats?.sharpeRatio)} accent="text-fuchsia-300" />
       </div>
 
       <div className="mt-6 rounded-[22px] border border-white/10 bg-slate-950/45 p-5">

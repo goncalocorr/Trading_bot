@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "test": "node --test --experimental-test-isolation=none tests/circuitbreaker.test.js tests/executionorchestrator.test.js tests/papervalidation.test.js tests/signalmonitor.test.js tests/startupguard.test.js"
+    "test": "node --test --experimental-test-isolation=none tests/circuitbreaker.test.js tests/executionorchestrator.test.js tests/papervalidation.test.js tests/scorer.test.js tests/signalmonitor.test.js tests/startupguard.test.js"
   },
   "dependencies": {
     "axios": "^1.8.4",

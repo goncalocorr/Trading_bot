@@ -7,26 +7,19 @@ import {
   XAxis,
   YAxis
 } from "recharts";
+import { useI18n } from "../i18n/I18nProvider";
 
 const ranges = ["1D", "1W", "1M", "ALL"];
 
-function formatCurrency(value) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2
-  }).format(Number(value || 0));
-}
-
 function CapitalChart({ data = [], range = "ALL", onRangeChange, loading = false }) {
+  const { locale, t, formatCurrency } = useI18n();
+
   return (
     <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-white">Capital Growth</h2>
-          <p className="mt-1 text-sm text-slate-300">
-            Track capital evolution across realized profit and market movement.
-          </p>
+          <h2 className="text-xl font-semibold text-white">{t("chart.title")}</h2>
+          <p className="mt-1 text-sm text-slate-300">{t("chart.subtitle")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {ranges.map((item) => (
@@ -49,7 +42,7 @@ function CapitalChart({ data = [], range = "ALL", onRangeChange, loading = false
       <div className="mt-6 h-80">
         {loading ? (
           <div className="flex h-full items-center justify-center text-sm text-slate-400">
-            Loading capital history...
+            {t("chart.loading")}
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
@@ -59,7 +52,7 @@ function CapitalChart({ data = [], range = "ALL", onRangeChange, loading = false
                 dataKey="timestamp"
                 tick={{ fill: "#cbd5e1", fontSize: 12 }}
                 tickFormatter={(value) =>
-                  new Date(value).toLocaleDateString("en-US", {
+                  new Date(value).toLocaleDateString(locale, {
                     month: "short",
                     day: "numeric"
                   })
@@ -73,7 +66,7 @@ function CapitalChart({ data = [], range = "ALL", onRangeChange, loading = false
                   borderRadius: "16px"
                 }}
                 formatter={(value) => formatCurrency(value)}
-                labelFormatter={(value) => new Date(value).toLocaleString()}
+                labelFormatter={(value) => new Date(value).toLocaleString(locale)}
               />
               <Line
                 type="monotone"

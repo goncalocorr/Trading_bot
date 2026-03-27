@@ -25,36 +25,24 @@ import {
   triggerManualTrade,
   updateSettings
 } from "../lib/api";
+import { useI18n } from "../i18n/I18nProvider";
 
 const Backtest = lazy(() => import("./Backtest"));
+const HelpPanel = lazy(() => import("./HelpPanel"));
 const SettingsPanel = lazy(() => import("./SettingsPanel"));
 const TradeHistory = lazy(() => import("./TradeHistory"));
 
-const tabs = [
-  { id: "overview", label: "Overview" },
-  { id: "history", label: "History" },
-  { id: "missed", label: "Missed" },
-  { id: "backtest", label: "Backtest" },
-  { id: "settings", label: "Settings" }
-];
-
 function PanelLoader() {
+  const { t } = useI18n();
+
   return (
     <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 text-sm text-slate-300 backdrop-blur">
-      Loading panel...
+      {t("common.loadingPanel")}
     </section>
   );
 }
 
-function formatCurrency(value) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2
-  }).format(Number(value || 0));
-}
-
-function buildManualSignalFeedback(result = {}) {
+function buildManualSignalFeedback(result = {}, t) {
   if (!result) {
     return null;
   }
@@ -62,48 +50,52 @@ function buildManualSignalFeedback(result = {}) {
   if (result.ok && result.action === "trade_opened") {
     return {
       tone: "success",
-      message: `Trade opened successfully for ${result.trade?.pair || "the selected pair"}.`
+      message: t("dashboard.manual.tradeOpened", {
+        pair: result.trade?.pair || result.pair || "the selected pair"
+      })
     };
   }
 
   if (result.ok && result.action === "all_positions_closed") {
     return {
       tone: "success",
-      message: `Closed ${result.closedCount || 0} open position(s) for the selected pair.`
+      message: t("dashboard.manual.positionsClosed", {
+        count: result.closedCount || 0
+      })
     };
   }
 
   if (result.action === "blocked") {
     return {
       tone: "warning",
-      message: result.reason || "Manual signal was blocked by the strategy rules."
+      message: result.reason || t("dashboard.manual.blocked")
     };
   }
 
   if (result.action === "missed_opportunity") {
     return {
       tone: "info",
-      message: result.reason || "Signal was logged as a missed opportunity."
+      message: result.reason || t("dashboard.manual.missed")
     };
   }
 
   if (result.action === "ignored") {
     return {
       tone: "info",
-      message: result.reason || "Signal was ignored by the scoring system."
+      message: result.reason || t("dashboard.manual.ignored")
     };
   }
 
   if (result.action === "spot_sell_skipped") {
     return {
       tone: "info",
-      message: result.reason || "No open spot position was available to close."
+      message: result.reason || t("dashboard.manual.sellSkipped")
     };
   }
 
   return {
     tone: result.ok ? "success" : "warning",
-    message: result.reason || "Manual signal processed."
+    message: result.reason || t("dashboard.manual.processed")
   };
 }
 
@@ -113,6 +105,7 @@ function normalizeNumericInput(value, fallback = 0) {
 }
 
 function Dashboard() {
+  const { locale, setLocale, availableLocales, t, formatCurrency, formatDateTime } = useI18n();
   const [activeTab, setActiveTab] = useState("overview");
   const [dashboardData, setDashboardData] = useState(null);
   const [capitalHistory, setCapitalHistory] = useState([]);
@@ -160,6 +153,7 @@ function Dashboard() {
     autoSwapEnabled: false,
     autoApproveLiveEnabled: false,
     autoLiveDeployEnabled: false,
+    notificationLocale: "en",
     scoreThreshold: 8,
     riskPerTrade: 0.01,
     compoundRatio: 0.5,
@@ -185,16 +179,25 @@ function Dashboard() {
   const [error, setError] = useState("");
   const [manualFeedback, setManualFeedback] = useState(null);
 
+  const tabs = useMemo(() => [
+    { id: "overview", label: t("tab.overview") },
+    { id: "history", label: t("tab.history") },
+    { id: "missed", label: t("tab.missed") },
+    { id: "backtest", label: t("tab.backtest") },
+    { id: "settings", label: t("tab.settings") },
+    { id: "help", label: t("tab.help") }
+  ], [t]);
+
   const headlineCards = useMemo(() => {
     const capital = dashboardData?.capital || {};
 
     return [
-      { label: "Current Capital", value: formatCurrency(capital.current), accent: "text-amber-300" },
-      { label: "Realized Profit", value: formatCurrency(capital.realizedProfit), accent: "text-emerald-300" },
-      { label: "Unrealized P&L", value: formatCurrency(capital.unrealizedPnl), accent: "text-sky-300" },
-      { label: "Bot Status", value: dashboardData?.botStatus || "Loading", accent: "text-white" }
+      { label: t("dashboard.currentCapital"), value: formatCurrency(capital.current), accent: "text-amber-300" },
+      { label: t("dashboard.realizedProfit"), value: formatCurrency(capital.realizedProfit), accent: "text-emerald-300" },
+      { label: t("dashboard.unrealizedPnl"), value: formatCurrency(capital.unrealizedPnl), accent: "text-sky-300" },
+      { label: t("dashboard.botStatus"), value: dashboardData?.botStatus || t("common.loading"), accent: "text-white" }
     ];
-  }, [dashboardData]);
+  }, [dashboardData, formatCurrency, t]);
 
   const load = useCallback(async () => {
     try {
@@ -240,6 +243,7 @@ function Dashboard() {
           autoSwapEnabled: settingsResponse.settings?.autoSwapEnabled ?? false,
           autoApproveLiveEnabled: settingsResponse.settings?.autoApproveLiveEnabled ?? false,
           autoLiveDeployEnabled: settingsResponse.settings?.autoLiveDeployEnabled ?? false,
+          notificationLocale: settingsResponse.settings?.notificationLocale ?? "en",
           scoreThreshold: settingsResponse.settings?.scoreThreshold ?? 8,
           riskPerTrade: settingsResponse.settings?.riskPerTrade ?? 0.01,
           compoundRatio: settingsResponse.settings?.compoundRatio ?? 0.5,
@@ -334,7 +338,7 @@ function Dashboard() {
       setSignalDebug(debugResponse.debug || null);
       await refreshTradeHistory();
       setError("");
-      setManualFeedback(buildManualSignalFeedback(response.result));
+      setManualFeedback(buildManualSignalFeedback(response.result, t));
     } catch (requestError) {
       setError(requestError.response?.data?.message || requestError.message);
       setManualFeedback(null);
@@ -346,9 +350,9 @@ function Dashboard() {
   const handleForceTestTrade = () => {
     setConfirmModal({
       open: true,
-      title: "Force paper trade?",
-      message: `This will open a BUY on ${manualSignal.pair} bypassing all scoring guards. For pipeline validation only.`,
-      confirmLabel: "Force trade",
+      title: t("dashboard.forceTradeTitle"),
+      message: t("dashboard.forceTradeMessage", { pair: manualSignal.pair }),
+      confirmLabel: t("dashboard.forceTradeConfirm"),
       confirmClass: "bg-orange-500 text-white hover:bg-orange-400",
       onConfirm: async () => {
         setConfirmModal((c) => ({ ...c, open: false }));
@@ -360,7 +364,7 @@ function Dashboard() {
           setDashboardData(dashboardResponse);
           await refreshTradeHistory();
           setError("");
-          setManualFeedback(buildManualSignalFeedback(response.result));
+          setManualFeedback(buildManualSignalFeedback(response.result, t));
         } catch (requestError) {
           setError(requestError.response?.data?.message || requestError.message);
           setManualFeedback(null);
@@ -506,6 +510,7 @@ function Dashboard() {
         autoSwapEnabled: Boolean(settingsForm.autoSwapEnabled),
         autoApproveLiveEnabled: Boolean(settingsForm.autoApproveLiveEnabled),
         autoLiveDeployEnabled: Boolean(settingsForm.autoLiveDeployEnabled),
+        notificationLocale: settingsForm.notificationLocale || "en",
         scoreThreshold: Math.round(normalizeNumericInput(settingsForm.scoreThreshold, 8)),
         riskPerTrade: normalizeNumericInput(settingsForm.riskPerTrade, 0.01),
         compoundRatio: normalizeNumericInput(settingsForm.compoundRatio, 0.5),
@@ -524,6 +529,7 @@ function Dashboard() {
         autoSwapEnabled: response.settings?.autoSwapEnabled ?? current.autoSwapEnabled,
         autoApproveLiveEnabled: response.settings?.autoApproveLiveEnabled ?? current.autoApproveLiveEnabled,
         autoLiveDeployEnabled: response.settings?.autoLiveDeployEnabled ?? current.autoLiveDeployEnabled,
+        notificationLocale: response.settings?.notificationLocale || current.notificationLocale,
         scoreThreshold: response.settings?.scoreThreshold ?? current.scoreThreshold,
         riskPerTrade: response.settings?.riskPerTrade ?? current.riskPerTrade,
         compoundRatio: response.settings?.compoundRatio ?? current.compoundRatio,
@@ -621,17 +627,33 @@ function Dashboard() {
           <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <span className="inline-flex rounded-full border border-amber-300/20 bg-amber-300/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.26em] text-amber-200">
-                Binance Spot Control Room
+                {t("dashboard.badge")}
               </span>
               <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-                Passive crypto bot dashboard with live risk context, scoring, and execution controls.
+                {t("dashboard.title")}
               </h1>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-                Designed for cautious capital deployment, transparent scoring, and fast intervention when market conditions shift.
+                {t("dashboard.subtitle")}
               </p>
             </div>
 
             <div className="flex flex-col gap-3 xl:w-[420px]">
+              <div className="flex items-center justify-end gap-3">
+                <label className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                  {t("language.label")}
+                </label>
+                <select
+                  value={locale}
+                  onChange={(event) => setLocale(event.target.value)}
+                  className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-2 text-sm text-white outline-none"
+                >
+                  {availableLocales.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {headlineCards.map((card) => (
                   <div key={card.label} className="rounded-[24px] border border-white/10 bg-white/5 p-4">
@@ -651,7 +673,7 @@ function Dashboard() {
                 ) : (
                   <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 )}
-                {loadingDashboard ? "Refreshing…" : "Refresh"}
+                {loadingDashboard ? t("common.refreshing") : t("common.refresh")}
               </button>
             </div>
           </div>
@@ -717,7 +739,7 @@ function Dashboard() {
               className="flex items-center justify-center gap-2 rounded-2xl bg-amber-300 px-5 py-3 text-sm font-semibold text-slate-900 transition hover:bg-amber-200 disabled:opacity-50"
             >
               {actionLoading && <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>}
-              {actionLoading ? "Submitting…" : "Manual signal"}
+              {actionLoading ? t("dashboard.submitting") : t("dashboard.manualSignal")}
             </button>
           </div>
           {settings?.tradingMode === "paper" && (
@@ -728,9 +750,9 @@ function Dashboard() {
                 disabled={actionLoading}
                 className="rounded-2xl border border-orange-500/40 bg-orange-500/10 px-5 py-2.5 text-sm font-semibold text-orange-300 transition hover:bg-orange-500/20 disabled:opacity-50"
               >
-                Force test trade (paper)
+                {t("dashboard.forceTestTrade")}
               </button>
-              <span className="text-xs text-slate-500">Bypasses scoring — validates pipeline only</span>
+              <span className="text-xs text-slate-500">{t("dashboard.forceTestTradeHint")}</span>
             </div>
           )}
         </section>
@@ -755,16 +777,16 @@ function Dashboard() {
               </div>
               <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
                 <div className="mb-5">
-                  <h2 className="text-xl font-semibold text-white">Latest Trades</h2>
+                  <h2 className="text-xl font-semibold text-white">{t("dashboard.latestTrades")}</h2>
                   <p className="mt-1 text-sm text-slate-300">
-                    The most recent executions and closures returned by the backend snapshot.
+                    {t("dashboard.latestTradesHint")}
                   </p>
                 </div>
 
                 <div className="space-y-3">
                   {(dashboardData?.latestTrades || []).length === 0 ? (
                     <div className="rounded-[22px] border border-dashed border-white/10 bg-slate-950/40 p-8 text-sm text-slate-400">
-                      No recent trades available yet.
+                      {t("dashboard.noLatestTrades")}
                     </div>
                   ) : (
                     (dashboardData?.latestTrades || []).map((trade) => (
@@ -773,33 +795,33 @@ function Dashboard() {
                         className="grid gap-3 rounded-[22px] border border-white/10 bg-slate-950/45 p-4 md:grid-cols-6"
                       >
                         <div>
-                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Pair</p>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("dashboard.field.pair")}</p>
                           <p className="mt-2 text-sm font-semibold text-white">{trade.pair}</p>
                         </div>
                         <div>
-                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Strategy</p>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("dashboard.field.strategy")}</p>
                           <p className="mt-2 text-sm font-semibold text-white">
-                            {trade.metadata?.strategyId || trade.metadata?.strategy || "manual"}
+                            {trade.metadata?.strategyId || trade.metadata?.strategy || t("common.manual")}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Side</p>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("dashboard.field.side")}</p>
                           <p className="mt-2 text-sm font-semibold text-white">{trade.side}</p>
                         </div>
                         <div>
-                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("dashboard.field.status")}</p>
                           <p className="mt-2 text-sm font-semibold text-white">{trade.status}</p>
                         </div>
                         <div>
-                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">PnL</p>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("dashboard.field.pnl")}</p>
                           <p className={`mt-2 text-sm font-semibold ${Number(trade.result_pnl || 0) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
                             {formatCurrency(trade.result_pnl || 0)}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Opened</p>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("dashboard.field.opened")}</p>
                           <p className="mt-2 text-sm font-semibold text-white">
-                            {trade.opened_at ? new Date(trade.opened_at).toLocaleString() : "n/a"}
+                            {formatDateTime(trade.opened_at)}
                           </p>
                         </div>
                       </article>
@@ -863,6 +885,12 @@ function Dashboard() {
                 saving={settingsSaving}
                 strategies={availableBacktestStrategies}
               />
+            </Suspense>
+          ) : null}
+
+          {activeTab === "help" ? (
+            <Suspense fallback={<PanelLoader />}>
+              <HelpPanel />
             </Suspense>
           ) : null}
         </div>

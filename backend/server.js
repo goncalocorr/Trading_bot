@@ -63,6 +63,7 @@ const runtime = {
   autoSwapEnabled: parseBooleanEnv(process.env.AUTO_SWAP_ENABLED, false),
   autoApproveLiveEnabled: parseBooleanEnv(process.env.AUTO_APPROVE_LIVE_ENABLED, false),
   autoLiveDeployEnabled: parseBooleanEnv(process.env.AUTO_LIVE_DEPLOY_ENABLED, false),
+  notificationLocale: String(process.env.TELEGRAM_NOTIFICATION_LOCALE || "en").toLowerCase() === "pt-pt" ? "pt-PT" : "en",
   scoreThreshold: Number(process.env.SCORE_THRESHOLD || DEFAULT_SCORE_THRESHOLD),
   riskPerTrade: Number(process.env.RISK_PER_TRADE || 0.01),
   compoundRatio: Number(process.env.COMPOUND_RATIO || 0.5),
@@ -88,6 +89,8 @@ const runtime = {
     lastReason: null
   }
 };
+
+telegramService.setLocaleResolver(() => runtime.notificationLocale || "en");
 
 const executionOrchestrator = new ExecutionOrchestrator({
   executionEngine,
@@ -230,6 +233,7 @@ function getRuntimeSettings() {
     autoSwapEnabled: runtime.autoSwapEnabled,
     autoApproveLiveEnabled: runtime.autoApproveLiveEnabled,
     autoLiveDeployEnabled: runtime.autoLiveDeployEnabled,
+    notificationLocale: runtime.notificationLocale,
     scoreThreshold: runtime.scoreThreshold,
     riskPerTrade: runtime.riskPerTrade,
     compoundRatio: runtime.compoundRatio,
@@ -295,6 +299,11 @@ function updateRuntimeSettings(payload = {}) {
   if (payload.autoLiveDeployEnabled !== undefined) {
     runtime.autoLiveDeployEnabled = Boolean(payload.autoLiveDeployEnabled);
     process.env.AUTO_LIVE_DEPLOY_ENABLED = runtime.autoLiveDeployEnabled ? "true" : "false";
+  }
+
+  if (payload.notificationLocale !== undefined) {
+    runtime.notificationLocale = String(payload.notificationLocale).toLowerCase() === "pt-pt" ? "pt-PT" : "en";
+    process.env.TELEGRAM_NOTIFICATION_LOCALE = runtime.notificationLocale;
   }
 
   if (payload.scoreThreshold !== undefined) {
@@ -464,13 +473,26 @@ function evaluateSignalExecutionGuards(scoreResult, signalSide) {
     };
   }
 
-  // Require at least 1H alignment. 4H alignment earns extra score points but is not mandatory.
+  const isMeanReversionSignal =
+    scoreResult?.metadata?.strategy === "mean_reversion" ||
+    scoreResult?.metadata?.strategyId === "mean_reversion";
   const has1hAlignment = multiTimeframe?.aligned1h && multiTimeframe?.direction1h === normalizedSide;
+  const oppositeSide = normalizedSide === "BUY" ? "SELL" : "BUY";
+  const stronglyOpposedHigherTimeframes =
+    Boolean(multiTimeframe?.aligned && multiTimeframe?.direction === oppositeSide) &&
+    Boolean(multiTimeframe?.aligned1h && multiTimeframe?.direction1h === oppositeSide);
 
-  if (!has1hAlignment) {
+  if (!isMeanReversionSignal && !has1hAlignment) {
     return {
       blocked: true,
       reason: "1H timeframe does not support this trade direction."
+    };
+  }
+
+  if (isMeanReversionSignal && stronglyOpposedHigherTimeframes) {
+    return {
+      blocked: true,
+      reason: "Higher timeframes are strongly against this mean-reversion setup."
     };
   }
 
@@ -480,10 +502,6 @@ function evaluateSignalExecutionGuards(scoreResult, signalSide) {
       reason: "Spread above 0.1%, market considered too illiquid for execution."
     };
   }
-
-  // Sideways guard only applies to trend-following strategies, not all signals.
-  // Mean reversion strategies are expected to fire in sideways conditions.
-  const isMeanReversionSignal = Boolean(scoreResult?.metadata?.strategy === "mean_reversion");
 
   if (normalizedSide === "BUY" && signalMarketState?.isSideways && !isMeanReversionSignal) {
     return {

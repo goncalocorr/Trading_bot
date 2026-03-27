@@ -1,6 +1,8 @@
-function formatNumber(value, digits = 2) {
+import { useI18n } from "../i18n/I18nProvider";
+
+function formatNumber(value, digits = 2, t) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "n/a";
+    return t("common.notAvailable");
   }
 
   return Number(value).toFixed(digits);
@@ -38,6 +40,7 @@ function getTimeframeTone(bias, isSignalTimeframe = false, isSideways = false) {
 }
 
 function TimeframeCard({ label, snapshot, signalTimeframe = false }) {
+  const { t } = useI18n();
   const bias = snapshot?.trend?.bias || "neutral";
   const tone = getTimeframeTone(bias, signalTimeframe, snapshot?.marketState?.isSideways);
   const cardStyles =
@@ -47,14 +50,14 @@ function TimeframeCard({ label, snapshot, signalTimeframe = false }) {
         ? "border-amber-400/20 bg-amber-500/10"
         : "border-sky-400/20 bg-sky-500/10";
 
-  let summary = "Mixed trend";
+  let summary = t("signal.mixedTrend");
 
   if (signalTimeframe) {
-    summary = snapshot?.marketState?.isSideways ? "Sideways regime" : "Tradeable regime";
+    summary = snapshot?.marketState?.isSideways ? t("signal.sidewaysRegime") : t("signal.tradeableRegime");
   } else if (snapshot?.trend?.goldenCross) {
-    summary = "Golden cross";
+    summary = t("signal.goldenCross");
   } else if (snapshot?.trend?.deathCross) {
-    summary = "Death cross";
+    summary = t("signal.deathCross");
   }
 
   return (
@@ -65,9 +68,9 @@ function TimeframeCard({ label, snapshot, signalTimeframe = false }) {
       </div>
 
       <div className="mt-4 space-y-2 text-sm text-slate-100">
-        <p>RSI: {formatNumber(snapshot?.rsi14)}</p>
-        <p>ATR: {formatNumber(snapshot?.atr14)}</p>
-        <p>EMA200: {snapshot?.trend?.priceAboveEma200 ? "Above" : "Below"}</p>
+        <p>{t("signal.rsi")}: {formatNumber(snapshot?.rsi14, 2, t)}</p>
+        <p>{t("signal.atr")}: {formatNumber(snapshot?.atr14, 2, t)}</p>
+        <p>{t("signal.ema200")}: {snapshot?.trend?.priceAboveEma200 ? t("signal.above") : t("signal.below")}</p>
         <p>{summary}</p>
       </div>
     </div>
@@ -75,6 +78,7 @@ function TimeframeCard({ label, snapshot, signalTimeframe = false }) {
 }
 
 function SignalDebugPanel({ debug, loading = false }) {
+  const { t } = useI18n();
   const blockers = debug?.blockers || [];
   const marketState = debug?.diagnostics?.marketState;
   const multiTimeframe = debug?.diagnostics?.multiTimeframe;
@@ -85,7 +89,7 @@ function SignalDebugPanel({ debug, loading = false }) {
   const readiness = debug?.readiness || {
     state: "BLOCKED",
     tone: "warning",
-    label: "Blocked",
+    label: t("common.blocked"),
     reason: "Signal is blocked by the current strategy conditions."
   };
 
@@ -93,26 +97,24 @@ function SignalDebugPanel({ debug, loading = false }) {
     <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
       <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-white">Signal Debug</h2>
-          <p className="mt-1 text-sm text-slate-300">
-            Live preview of alignment, score, blockers and market regime for the selected manual signal.
-          </p>
+          <h2 className="text-xl font-semibold text-white">{t("signal.title")}</h2>
+          <p className="mt-1 text-sm text-slate-300">{t("signal.subtitle")}</p>
         </div>
 
         <div className="flex flex-wrap gap-2">
           <ToneBadge tone={readiness.tone}>{readiness.state}</ToneBadge>
-          <ToneBadge tone={tone}>{debug?.decision || "Loading"}</ToneBadge>
-          <ToneBadge tone="info">{debug?.tradingMode || "Mode"}</ToneBadge>
+          <ToneBadge tone={tone}>{debug?.decision || t("common.loading")}</ToneBadge>
+          <ToneBadge tone="info">{debug?.tradingMode || t("common.loading")}</ToneBadge>
         </div>
       </div>
 
       {loading ? (
         <div className="rounded-[22px] border border-dashed border-white/10 bg-slate-950/40 p-8 text-sm text-slate-400">
-          Refreshing signal diagnostics...
+          {t("signal.loading")}
         </div>
       ) : !debug ? (
         <div className="rounded-[22px] border border-dashed border-white/10 bg-slate-950/40 p-8 text-sm text-slate-400">
-          No signal diagnostics available yet.
+          {t("signal.empty")}
         </div>
       ) : (
         <div className="space-y-5">
@@ -126,7 +128,7 @@ function SignalDebugPanel({ debug, loading = false }) {
                     : "border-sky-400/25 bg-sky-500/10 text-sky-100"
               }`}
             >
-              <p className="text-xs uppercase tracking-[0.2em]">Readiness</p>
+              <p className="text-xs uppercase tracking-[0.2em]">{t("signal.readiness")}</p>
               <p className="mt-2 text-xl font-semibold">{readiness.label}</p>
               <p className="mt-2">{readiness.reason}</p>
             </div>
@@ -140,49 +142,55 @@ function SignalDebugPanel({ debug, loading = false }) {
                     : "border-sky-400/25 bg-sky-500/10 text-sky-100"
               }`}
             >
-              <p className="text-xs uppercase tracking-[0.2em]">Primary reason</p>
+              <p className="text-xs uppercase tracking-[0.2em]">{t("signal.primaryReason")}</p>
               <p className="mt-2">{debug.primaryReason}</p>
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Score</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("signal.score")}</p>
               <p className="mt-2 text-2xl font-semibold text-white">
                 {debug.score?.totalScore}/{debug.score?.maxScore}
               </p>
             </div>
 
             <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">1H + 4H</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("signal.multiTf")}</p>
               <p className="mt-2 text-lg font-semibold text-white">{multiTimeframe?.direction || "neutral"}</p>
-              <p className="mt-1 text-xs text-slate-400">{multiTimeframe?.aligned ? "Aligned" : "Not aligned"}</p>
+              <p className="mt-1 text-xs text-slate-400">{multiTimeframe?.aligned ? t("common.aligned") : t("common.notAligned")}</p>
             </div>
 
             <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Market Regime</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("signal.marketRegime")}</p>
               <p className="mt-2 text-lg font-semibold text-white">
-                {marketState?.isSideways ? "Sideways" : "Tradeable"}
+                {marketState?.isSideways ? t("signal.sideways") : t("signal.tradeable")}
               </p>
               <p className="mt-1 text-xs text-slate-400">
-                ATR {formatNumber(marketState?.atrPercent)}% • EMA compression {formatNumber(marketState?.emaCompressionPercent)}%
+                {t("signal.marketDetails", {
+                  atr: formatNumber(marketState?.atrPercent, 2, t),
+                  compression: formatNumber(marketState?.emaCompressionPercent, 2, t)
+                })}
               </p>
             </div>
 
             <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Fear & Greed</p>
-              <p className="mt-2 text-lg font-semibold text-white">{fearGreed?.classification || "n/a"}</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("signal.fearGreed")}</p>
+              <p className="mt-2 text-lg font-semibold text-white">{fearGreed?.classification || t("common.notAvailable")}</p>
               <p className="mt-1 text-xs text-slate-400">
-                Value {formatNumber(fearGreed?.value, 0)} • RSI {formatNumber(debug.diagnostics?.rsi15m)}
+                {t("signal.valueRsi", {
+                  value: formatNumber(fearGreed?.value, 0, t),
+                  rsi: formatNumber(debug.diagnostics?.rsi15m, 2, t)
+                })}
               </p>
             </div>
           </div>
 
           <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-4">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-white">Timeframe Alignment</p>
+              <p className="text-sm font-semibold text-white">{t("signal.timeframeAlignment")}</p>
               <ToneBadge tone={multiTimeframe?.aligned ? "success" : "warning"}>
-                {multiTimeframe?.aligned ? "Aligned" : "Blocked"}
+                {multiTimeframe?.aligned ? t("common.aligned") : t("common.blocked")}
               </ToneBadge>
             </div>
 
@@ -196,10 +204,10 @@ function SignalDebugPanel({ debug, loading = false }) {
 
           <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
             <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-4">
-              <p className="text-sm font-semibold text-white">Blockers</p>
+              <p className="text-sm font-semibold text-white">{t("signal.blockers")}</p>
               <div className="mt-3 space-y-2">
                 {blockers.length === 0 ? (
-                  <p className="text-sm text-emerald-200">No blockers detected for the current manual signal preview.</p>
+                  <p className="text-sm text-emerald-200">{t("signal.noBlockers")}</p>
                 ) : (
                   blockers.map((blocker) => (
                     <div
@@ -214,14 +222,14 @@ function SignalDebugPanel({ debug, loading = false }) {
             </div>
 
             <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-4 text-sm text-slate-300">
-              <p className="font-semibold text-white">Execution context</p>
+              <p className="font-semibold text-white">{t("signal.executionContext")}</p>
               <div className="mt-3 space-y-2">
-                <p>Pair: <span className="text-white">{debug.pair}</span></p>
-                <p>Side: <span className="text-white">{debug.side}</span></p>
-                <p>Bot status: <span className="text-white">{debug.botStatus}</span></p>
-                <p>Runtime threshold: <span className="text-white">{debug.runtimeThreshold}</span></p>
-                <p>Expected mode: <span className="text-white">{debug.score?.executionMode || "SKIP"}</span></p>
-                <p>Spread: <span className="text-white">{formatNumber(orderBook?.spreadPercent)}%</span></p>
+                <p>{t("dashboard.field.pair")}: <span className="text-white">{debug.pair}</span></p>
+                <p>{t("dashboard.field.side")}: <span className="text-white">{debug.side}</span></p>
+                <p>{t("signal.botStatus")}: <span className="text-white">{debug.botStatus}</span></p>
+                <p>{t("signal.runtimeThreshold")}: <span className="text-white">{debug.runtimeThreshold}</span></p>
+                <p>{t("signal.expectedMode")}: <span className="text-white">{debug.score?.executionMode || "SKIP"}</span></p>
+                <p>{t("signal.spread")}: <span className="text-white">{formatNumber(orderBook?.spreadPercent, 2, t)}%</span></p>
               </div>
             </div>
           </div>
