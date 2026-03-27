@@ -1,3 +1,5 @@
+const logger = require("./logger");
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -73,7 +75,7 @@ class StrategyRunner {
           results: pairResults
         });
       } catch (error) {
-        console.error(`Auto scan failed for ${pair}: ${error.message}`);
+        logger.error(`Auto scan failed for ${pair}: ${error.message}`);
         summary.push({
           pair,
           error: error.message,

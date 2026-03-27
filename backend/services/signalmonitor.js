@@ -1,3 +1,5 @@
+const logger = require("./logger");
+
 class SignalMonitor {
   constructor({
     runtime,
@@ -129,7 +131,7 @@ class SignalMonitor {
             : previousRecord?.lastNotifiedAt || null
         };
       } catch (error) {
-        console.error(`Signal readiness monitor failed for ${pair}: ${error.message}`);
+        logger.error(`Signal readiness monitor failed for ${pair}: ${error.message}`);
       }
     }
   }
