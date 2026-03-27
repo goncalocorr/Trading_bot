@@ -91,11 +91,12 @@ class RiskManager {
     capital,
     entryPrice,
     atr,
+    side = "BUY",
     riskPerTrade = this.getConfig().riskPerTrade
   }) {
     const numericCapital = Number(capital);
     const numericEntryPrice = Number(entryPrice);
-    const exits = this.calculateExitLevels({ side: "BUY", entryPrice, atr });
+    const exits = this.calculateExitLevels({ side, entryPrice, atr });
     const riskAmount = numericCapital * Number(riskPerTrade);
     const riskSizedQuantity = riskAmount / exits.stopDistance;
     const maxAffordableQuantity = numericEntryPrice > 0 ? numericCapital / numericEntryPrice : 0;
@@ -243,8 +244,7 @@ class RiskManager {
     const rows = await db.query(
       `SELECT COALESCE(SUM(entry_price * quantity), 0) AS reservedCapital
        FROM trades
-       WHERE status = 'open'
-         AND side = 'BUY'`
+       WHERE status = 'open'`
     );
 
     return Number(rows[0]?.reservedCapital || 0);
@@ -480,6 +480,7 @@ class RiskManager {
       capital: capitalState.availableCapital,
       entryPrice,
       atr,
+      side,
       riskPerTrade: riskPerTradeOverride ?? this.getConfig().riskPerTrade
     });
     const exits = this.calculateExitLevels({ side, entryPrice, atr });

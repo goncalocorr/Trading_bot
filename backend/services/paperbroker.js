@@ -8,6 +8,10 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Simulated fee rate (Binance spot taker = 0.1%). Applied to market order
+// execution prices so paper PnL reflects real trading costs.
+const PAPER_FEE_RATE = Number(process.env.PAPER_FEE_RATE || process.env.BACKTEST_FEE_RATE || 0.001);
+
 const STATE_KEY = "paper_broker_state";
 // Legacy JSON path kept for one-time migration only.
 const PAPER_STATE_DIR = path.join(__dirname, "..", "data");
@@ -196,8 +200,11 @@ class PaperBroker {
     const normalizedSymbol = String(symbol).toUpperCase();
     const normalizedSide = String(side).toUpperCase();
     const ticker = await binanceService.getBestBookTicker(normalizedSymbol);
-    const executionPrice =
+    // Apply fee as price adjustment so PnL already reflects trading costs:
+    // BUY pays slightly more (ask × (1 + fee)), SELL receives slightly less (bid × (1 - fee))
+    const rawPrice =
       normalizedSide === "BUY" ? Number(ticker.askPrice || ticker.bidPrice) : Number(ticker.bidPrice || ticker.askPrice);
+    const executionPrice = normalizedSide === "BUY" ? rawPrice * (1 + PAPER_FEE_RATE) : rawPrice * (1 - PAPER_FEE_RATE);
     const orderId = this.generateOrderId();
     const order = {
       symbol: normalizedSymbol,
@@ -216,7 +223,7 @@ class PaperBroker {
         {
           price: String(executionPrice),
           qty: String(quantity),
-          commission: "0",
+          commission: String(Number(quantity) * Number(executionPrice || price || 0) * PAPER_FEE_RATE),
           commissionAsset: "USDT"
         }
       ]
@@ -439,7 +446,7 @@ class PaperBroker {
         {
           price: String(executionPrice),
           qty: String(quantity),
-          commission: "0",
+          commission: String(Number(quantity) * Number(executionPrice) * PAPER_FEE_RATE),
           commissionAsset: "USDT"
         }
       ]
@@ -462,7 +469,7 @@ class PaperBroker {
       price: String(executionPrice),
       qty: String(orderList.origQty),
       quoteQty: String(orderList.origQty * executionPrice),
-      commission: "0",
+      commission: String(Number(orderList.origQty) * Number(executionPrice) * PAPER_FEE_RATE),
       commissionAsset: "USDT",
       time: orderList.transactTime,
       isBuyer: orderList.side === "BUY",
@@ -481,7 +488,7 @@ class PaperBroker {
       price: String(executionPrice),
       qty: String(quantity),
       quoteQty: String(Number(quantity) * executionPrice),
-      commission: "0",
+      commission: String(Number(quantity) * Number(executionPrice) * PAPER_FEE_RATE),
       commissionAsset: "USDT",
       time: order.transactTime,
       isBuyer: order.side === "BUY",

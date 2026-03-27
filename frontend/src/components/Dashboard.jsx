@@ -202,7 +202,10 @@ function Dashboard() {
   const load = useCallback(async () => {
     try {
       setLoadingDashboard(true);
-        const [dashboardResponse, historyResponse, tradesResponse, settingsResponse, backtestRunsResponse, backtestStrategiesResponse] = await Promise.all([
+        const [
+          dashboardResult, historyResult, tradesResult, settingsResult,
+          backtestRunsResult, backtestStrategiesResult
+        ] = await Promise.allSettled([
           fetchDashboard(),
           fetchCapitalHistory(historyRange),
           fetchTrades(),
@@ -211,22 +214,31 @@ function Dashboard() {
           fetchBacktestStrategies()
         ]);
 
-        setDashboardData(dashboardResponse);
-        setCapitalHistory(historyResponse.history || []);
-        setTradeHistory(tradesResponse.trades || []);
-        setSettings(settingsResponse.settings || null);
-        setBacktestRuns(backtestRunsResponse.runs || []);
-        setAvailableBacktestStrategies(backtestStrategiesResponse.strategies || []);
-        setBacktestForm((current) => ({
-          ...current,
-          activeStrategies:
-            current.activeStrategies.length > 0
-              ? current.activeStrategies
-              : (backtestStrategiesResponse.strategies || [])
-                  .filter((strategy) => strategy.activeByDefault)
-                  .map((strategy) => strategy.id)
-        }));
-        if ((backtestRunsResponse.runs || []).length > 0) {
+        const dashboardResponse      = dashboardResult.status === "fulfilled"      ? dashboardResult.value      : null;
+        const historyResponse        = historyResult.status === "fulfilled"        ? historyResult.value        : null;
+        const tradesResponse         = tradesResult.status === "fulfilled"         ? tradesResult.value         : null;
+        const settingsResponse       = settingsResult.status === "fulfilled"       ? settingsResult.value       : null;
+        const backtestRunsResponse   = backtestRunsResult.status === "fulfilled"   ? backtestRunsResult.value   : null;
+        const backtestStrategiesResponse = backtestStrategiesResult.status === "fulfilled" ? backtestStrategiesResult.value : null;
+
+        if (dashboardResponse)  setDashboardData(dashboardResponse);
+        if (historyResponse)    setCapitalHistory(historyResponse.history || []);
+        if (tradesResponse)     setTradeHistory(tradesResponse.trades || []);
+        if (settingsResponse)   setSettings(settingsResponse.settings || null);
+        if (backtestRunsResponse) setBacktestRuns(backtestRunsResponse.runs || []);
+        if (backtestStrategiesResponse) setAvailableBacktestStrategies(backtestStrategiesResponse.strategies || []);
+        if (backtestStrategiesResponse) {
+          setBacktestForm((current) => ({
+            ...current,
+            activeStrategies:
+              current.activeStrategies.length > 0
+                ? current.activeStrategies
+                : (backtestStrategiesResponse.strategies || [])
+                    .filter((strategy) => strategy.activeByDefault)
+                    .map((strategy) => strategy.id)
+          }));
+        }
+        if ((backtestRunsResponse?.runs || []).length > 0) {
           try {
             const latestRunResponse = await fetchBacktestRun(backtestRunsResponse.runs[0].id);
             setSelectedBacktestRun(latestRunResponse.run || null);

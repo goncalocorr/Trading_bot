@@ -701,6 +701,7 @@ async function simulateBacktestRange({
         capital: availableCapital,
         entryPrice,
         atr,
+        side: selectedCandidate.side,
         riskPerTrade
       });
 
