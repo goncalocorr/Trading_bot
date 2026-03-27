@@ -641,7 +641,7 @@ async function simulateBacktestRange({
     } else if (
       bestBuyCandidate &&
       bestBuyCandidate.score.totalScore >= scoreThreshold &&
-      !(marketState?.isSideways) &&
+      (!(marketState?.isSideways) || bestBuyCandidate.strategyId === "mean_reversion") &&
       !cooldownActive &&
       openPositions.length < Math.min(maxOpenTrades, maxOpenTradesPerPair) &&
       openPositions.length + pendingEntries.length < Math.min(maxOpenTrades, maxOpenTradesPerPair)
