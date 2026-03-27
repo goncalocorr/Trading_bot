@@ -196,10 +196,9 @@ function Dashboard() {
     ];
   }, [dashboardData]);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setLoadingDashboard(true);
+  const load = useCallback(async () => {
+    try {
+      setLoadingDashboard(true);
         const [dashboardResponse, historyResponse, tradesResponse, settingsResponse, backtestRunsResponse, backtestStrategiesResponse] = await Promise.all([
           fetchDashboard(),
           fetchCapitalHistory(historyRange),
@@ -256,13 +255,14 @@ function Dashboard() {
       } finally {
         setLoadingDashboard(false);
       }
-    };
+  }, [historyRange]);
 
+  useEffect(() => {
     load();
     const intervalId = window.setInterval(load, 15000);
 
     return () => window.clearInterval(intervalId);
-  }, [historyRange]);
+  }, [load]);
 
   useEffect(() => {
     let active = true;
@@ -638,7 +638,7 @@ function Dashboard() {
               </div>
               <button
                 type="button"
-                onClick={() => { setLoadingDashboard(true); }}
+                onClick={load}
                 disabled={loadingDashboard}
                 className="flex items-center justify-center gap-2 rounded-[20px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-white/10 disabled:opacity-50"
               >

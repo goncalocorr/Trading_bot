@@ -120,7 +120,7 @@ module.exports = function createTradesRouter(context) {
     "/force-paper-test",
     [
       body("pair").optional().isString().notEmpty(),
-      body("confirm").isBoolean().equals("true")
+      body("confirm").isBoolean()
     ],
     async (req, res) => {
       const errors = validationResult(req);

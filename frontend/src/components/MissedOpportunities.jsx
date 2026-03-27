@@ -19,7 +19,7 @@ export default function MissedOpportunities({ tradingPairs = [] }) {
       const result = await fetchMissedOpportunities({ pair: pair || undefined, limit: 100 });
       setData(result);
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.message || err.message);
     } finally {
       setLoading(false);
     }
