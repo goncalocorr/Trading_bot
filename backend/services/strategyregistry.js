@@ -1,11 +1,13 @@
 const multiTimeframeRsiStrategy = require("../strategies/multi_timeframe_rsi");
 const pullbackContinuationStrategy = require("../strategies/pullback_continuation");
+const meanReversionStrategy = require("../strategies/mean_reversion");
 
 class StrategyRegistry {
   constructor() {
     this.strategies = new Map();
     this.register(multiTimeframeRsiStrategy);
     this.register(pullbackContinuationStrategy);
+    this.register(meanReversionStrategy);
   }
 
   register(strategy) {

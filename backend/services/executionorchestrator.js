@@ -592,6 +592,69 @@ class ExecutionOrchestrator {
     }
   }
 
+  async updateTrailingStop(trade, newStopLoss, highWaterMark) {
+    const currentMetadata = trade.metadata || {};
+    let protectionCancelled = false;
+
+    try {
+      if (trade.oco_order_list_id) {
+        await this.executionEngine.cancelOrderList(trade.pair, trade.oco_order_list_id);
+        protectionCancelled = true;
+      }
+
+      const replacementOco = await this.executionEngine.placeOcoOrder({
+        symbol: trade.pair,
+        side: "SELL",
+        quantity: trade.quantity,
+        price: trade.take_profit,
+        stopPrice: newStopLoss,
+        stopLimitPrice: getOcoStopLimitPrice(newStopLoss),
+        listClientOrderId: `trail-oco-${Date.now()}`
+      });
+
+      await this.tradeModel.updateTradeProtection(trade.id, {
+        stopLoss: newStopLoss,
+        takeProfit: trade.take_profit,
+        ocoOrderListId: replacementOco?.orderListId || null,
+        metadata: {
+          ...currentMetadata,
+          ocoOrder: replacementOco,
+          trailingHighWaterMark: highWaterMark,
+          trailingStopUpdatedAt: new Date().toISOString(),
+          previousStopLoss: trade.stop_loss
+        }
+      });
+
+      await this.settleTrackedOrders(trade.id, "cancelled", { replacedBy: "trailing_stop_upgrade" }, ["protection", "adjustment"]);
+      await this.recordOrder("adjustment", {
+        tradeId: trade.id,
+        pair: trade.pair,
+        side: "SELL",
+        orderType: "OCO",
+        exchangeOrderListId: replacementOco?.orderListId || null,
+        exchangeClientOrderId: replacementOco?.listClientOrderId || null,
+        quantity: trade.quantity,
+        price: trade.take_profit,
+        stopPrice: newStopLoss,
+        status: "open",
+        metadata: { kind: "trailing_stop_upgrade", tradingMode: this.executionEngine.getModeLabel() }
+      });
+
+      this.logger?.info("trailing_stop_updated", {
+        tradeId: trade.id,
+        pair: trade.pair,
+        newStopLoss,
+        highWaterMark
+      });
+    } catch (error) {
+      if (protectionCancelled) {
+        await this.closeTrade(trade.id, "trailing_stop_protection_failed", { error: error.message });
+      }
+
+      throw error;
+    }
+  }
+
   async manageOpenTrades() {
     const openTrades = await this.tradeModel.getOpenTrades();
     const buyTrades = openTrades.filter((trade) => trade.side === "BUY");
@@ -600,6 +663,7 @@ class ExecutionOrchestrator {
       return;
     }
 
+    const trailingEnabled = parseBooleanEnv(process.env.TRAILING_STOP_ENABLED, true);
     const uniquePairs = [...new Set(buyTrades.map((trade) => trade.pair))];
     const latestPrices = {};
     const openOrderListIdsByPair = {};
@@ -630,27 +694,77 @@ class ExecutionOrchestrator {
         !trade.oco_order_list_id ||
         openOrderListIdsByPair[trade.pair]?.has(Number(trade.oco_order_list_id));
 
-      if (metadata.breakEvenActivated || !Number.isFinite(marketPrice) || !hasOpenProtection) {
+      if (!Number.isFinite(marketPrice) || !hasOpenProtection) {
         continue;
       }
 
-      const triggerPrice = Number(
-        metadata.breakEvenTriggerPrice || trade.entry_price + (trade.entry_price - trade.stop_loss)
-      );
+      // Phase 1: Activate break-even when price reaches +1R.
+      if (!metadata.breakEvenActivated) {
+        const triggerPrice = Number(
+          metadata.breakEvenTriggerPrice || trade.entry_price + (trade.entry_price - trade.stop_loss)
+        );
 
-      if (marketPrice < triggerPrice) {
+        if (marketPrice >= triggerPrice) {
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            await this.activateBreakEvenProtection(trade);
+          } catch (error) {
+            this.logger?.error("break_even_activation_failed", {
+              tradeId: trade.id,
+              pair: trade.pair,
+              message: error.message
+            });
+          }
+        }
+
         continue;
       }
 
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        await this.activateBreakEvenProtection(trade);
-      } catch (error) {
-        this.logger?.error("break_even_activation_failed", {
-          tradeId: trade.id,
-          pair: trade.pair,
-          message: error.message
-        });
+      // Phase 2: Trail the stop after break-even is active.
+      if (!trailingEnabled) {
+        continue;
+      }
+
+      // Use the original stop distance stored when break-even was activated.
+      const originalStopLoss = Number(metadata.previousStopLoss || trade.stop_loss);
+      const originalStopDistance = trade.entry_price - originalStopLoss;
+
+      if (originalStopDistance <= 0) {
+        continue;
+      }
+
+      const trailingMultiplier = Number(process.env.TRAILING_STOP_MULTIPLIER || 1.0);
+      const trailingDistance = originalStopDistance * trailingMultiplier;
+      const currentHighWaterMark = Number(metadata.trailingHighWaterMark || trade.entry_price);
+      const newHighWaterMark = Math.max(currentHighWaterMark, marketPrice);
+      const newTrailingStop = newHighWaterMark - trailingDistance;
+      const currentStopLoss = Number(trade.stop_loss);
+
+      // Only update if the new trailing stop is meaningfully higher than the current one.
+      if (newTrailingStop > currentStopLoss + originalStopDistance * 0.05) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await this.updateTrailingStop(trade, newTrailingStop, newHighWaterMark);
+        } catch (error) {
+          this.logger?.error("trailing_stop_update_failed", {
+            tradeId: trade.id,
+            pair: trade.pair,
+            message: error.message
+          });
+        }
+      } else if (newHighWaterMark > currentHighWaterMark) {
+        // Track the new high-water mark even if stop didn't move yet.
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await this.tradeModel.updateTradeProtection(trade.id, {
+            stopLoss: currentStopLoss,
+            takeProfit: trade.take_profit,
+            ocoOrderListId: trade.oco_order_list_id,
+            metadata: { ...metadata, trailingHighWaterMark: newHighWaterMark }
+          });
+        } catch (_error) {
+          // Non-critical — just tracking, ignore failure.
+        }
       }
     }
   }

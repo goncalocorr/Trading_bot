@@ -55,15 +55,19 @@ function evaluateEmaTrend(signalSide, indicatorSnapshot, signalTimeframe = "15m"
 function evaluateMultiTimeframe(signalSide, indicatorSnapshot) {
   const multiTimeframe = indicatorSnapshot?.multiTimeframe;
   const normalizedSide = normalizeSide(signalSide);
-  const confirms = multiTimeframe?.aligned && multiTimeframe?.direction === normalizedSide;
+  const fullAlignment = multiTimeframe?.aligned && multiTimeframe?.direction === normalizedSide;
+  const partialAlignment = !fullAlignment && multiTimeframe?.aligned1h && multiTimeframe?.direction1h === normalizedSide;
+  const points = fullAlignment ? 2 : partialAlignment ? 1 : 0;
 
   return {
     label: "Multi-timeframe alignment (1H + 4H)",
-    points: confirms ? 2 : 0,
+    points,
     maxPoints: 2,
-    passed: confirms,
+    passed: points > 0,
+    partial: partialAlignment,
     details: multiTimeframe || {
       aligned: false,
+      aligned1h: false,
       direction: "neutral",
       reason: "No higher timeframe context available."
     }

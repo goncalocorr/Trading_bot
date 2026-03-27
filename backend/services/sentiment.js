@@ -226,19 +226,32 @@ class SentimentService {
       };
     }
 
+    // Extreme Greed while trying to BUY: avoid chasing tops.
     if (normalizedSide === "BUY" && fearGreed.isExtremeGreed) {
       return {
         allowed: false,
         scoreEligible: false,
-        reason: "Extreme Greed: avoid buying."
+        reason: "Extreme Greed: avoid buying at market tops."
       };
     }
 
+    // Extreme Fear while trying to SELL: avoid selling at market bottoms.
     if (normalizedSide === "SELL" && fearGreed.isExtremeFear) {
       return {
         allowed: false,
         scoreEligible: false,
-        reason: "Extreme Fear: avoid selling."
+        reason: "Extreme Fear: avoid selling at market bottoms."
+      };
+    }
+
+    // Extreme Fear for BUY is a contrarian bullish signal — the crowd is maximally fearful,
+    // historically associated with market bottoms.
+    if (normalizedSide === "BUY" && fearGreed.isExtremeFear) {
+      return {
+        allowed: true,
+        scoreEligible: true,
+        contrarian: true,
+        reason: "Extreme Fear is a contrarian BUY signal (market bottoms)."
       };
     }
 

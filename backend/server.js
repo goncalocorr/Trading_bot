@@ -439,16 +439,38 @@ function determineRuntimeDecision(scoreTotal) {
   return "IGNORE";
 }
 
+function isWithinTradingHours(referenceDate = new Date()) {
+  if (!parseBooleanEnv(process.env.TRADING_HOURS_ENABLED, false)) {
+    return true;
+  }
+
+  const startHour = Number(process.env.TRADING_HOURS_START_UTC || 7);
+  const endHour = Number(process.env.TRADING_HOURS_END_UTC || 21);
+  const currentHour = referenceDate.getUTCHours();
+
+  return currentHour >= startHour && currentHour < endHour;
+}
+
 function evaluateSignalExecutionGuards(scoreResult, signalSide) {
   const normalizedSide = String(signalSide || "").toUpperCase();
   const multiTimeframe = scoreResult?.snapshots?.indicators?.multiTimeframe;
   const spreadAccepted = Boolean(scoreResult?.snapshots?.orderBook?.acceptableSpread);
   const signalMarketState = scoreResult?.snapshots?.indicators?.["15m"]?.marketState;
 
-  if (!multiTimeframe?.aligned || multiTimeframe.direction !== normalizedSide) {
+  if (!isWithinTradingHours()) {
     return {
       blocked: true,
-      reason: "Higher timeframe alignment (1H + 4H) does not support this trade direction."
+      reason: "Outside trading hours (configured UTC window)."
+    };
+  }
+
+  // Require at least 1H alignment. 4H alignment earns extra score points but is not mandatory.
+  const has1hAlignment = multiTimeframe?.aligned1h && multiTimeframe?.direction1h === normalizedSide;
+
+  if (!has1hAlignment) {
+    return {
+      blocked: true,
+      reason: "1H timeframe does not support this trade direction."
     };
   }
 
@@ -459,7 +481,11 @@ function evaluateSignalExecutionGuards(scoreResult, signalSide) {
     };
   }
 
-  if (normalizedSide === "BUY" && signalMarketState?.isSideways) {
+  // Sideways guard only applies to trend-following strategies, not all signals.
+  // Mean reversion strategies are expected to fire in sideways conditions.
+  const isMeanReversionSignal = Boolean(scoreResult?.metadata?.strategy === "mean_reversion");
+
+  if (normalizedSide === "BUY" && signalMarketState?.isSideways && !isMeanReversionSignal) {
     return {
       blocked: true,
       reason: signalMarketState.reason

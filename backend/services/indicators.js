@@ -222,33 +222,52 @@ function analyzeSignalAlignment(timeframeIndicators = {}) {
   const hourly = timeframeIndicators["1h"];
   const fourHour = timeframeIndicators["4h"];
 
-  if (!hourly || !fourHour) {
+  if (!hourly) {
     return {
       aligned: false,
+      aligned1h: false,
+      aligned4h: false,
       direction: "neutral",
-      reason: "Missing 1h or 4h trend context."
+      direction1h: "neutral",
+      reason: "Missing 1h trend context."
     };
   }
 
-  if (hourly.bias === "bullish" && fourHour.bias === "bullish") {
+  const direction1h = hourly.bias === "bullish" ? "BUY" : hourly.bias === "bearish" ? "SELL" : "neutral";
+  const aligned1h = direction1h !== "neutral";
+  const direction4h = fourHour?.bias === "bullish" ? "BUY" : fourHour?.bias === "bearish" ? "SELL" : "neutral";
+  const aligned4h = direction4h !== "neutral" && direction4h === direction1h;
+
+  // Full alignment: both 1h and 4h agree.
+  if (aligned1h && aligned4h) {
     return {
       aligned: true,
-      direction: "BUY",
-      reason: "1h and 4h both confirm bullish direction."
+      aligned1h: true,
+      aligned4h: true,
+      direction: direction1h,
+      direction1h,
+      reason: `1h and 4h both confirm ${direction1h === "BUY" ? "bullish" : "bearish"} direction.`
     };
   }
 
-  if (hourly.bias === "bearish" && fourHour.bias === "bearish") {
+  // Partial alignment: only 1h has a clear bias (4h is neutral or disagrees).
+  if (aligned1h) {
     return {
-      aligned: true,
-      direction: "SELL",
-      reason: "1h and 4h both confirm bearish direction."
+      aligned: false,
+      aligned1h: true,
+      aligned4h: false,
+      direction: direction1h,
+      direction1h,
+      reason: `1h confirms ${direction1h === "BUY" ? "bullish" : "bearish"} direction but 4h is not aligned.`
     };
   }
 
   return {
     aligned: false,
+    aligned1h: false,
+    aligned4h: false,
     direction: "neutral",
+    direction1h: "neutral",
     reason: "Higher timeframes are not aligned."
   };
 }
