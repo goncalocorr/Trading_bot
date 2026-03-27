@@ -224,8 +224,12 @@ function Dashboard() {
                   .map((strategy) => strategy.id)
         }));
         if ((backtestRunsResponse.runs || []).length > 0) {
-          const latestRunResponse = await fetchBacktestRun(backtestRunsResponse.runs[0].id);
-          setSelectedBacktestRun(latestRunResponse.run || null);
+          try {
+            const latestRunResponse = await fetchBacktestRun(backtestRunsResponse.runs[0].id);
+            setSelectedBacktestRun(latestRunResponse.run || null);
+          } catch {
+            // Non-critical: leave previously selected run as-is if this fetch fails
+          }
         }
         setSettingsForm({
           botEnabled: settingsResponse.settings?.botEnabled ?? true,

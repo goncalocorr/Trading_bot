@@ -1,5 +1,5 @@
 const express = require("express");
-const { body, validationResult } = require("express-validator");
+const { body, param, validationResult } = require("express-validator");
 const ExperimentInsights = require("../services/experimentinsights");
 
 module.exports = function createBacktestRouter(context) {
@@ -171,7 +171,10 @@ module.exports = function createBacktestRouter(context) {
     }
   });
 
-  router.get("/runs/:id", async (req, res) => {
+  router.get("/runs/:id", [param("id").isInt({ min: 1 })], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ ok: false, errors: errors.array() });
+
     try {
       const run = await context.backtestRuns.getBacktestRunById(req.params.id);
 
@@ -208,6 +211,7 @@ module.exports = function createBacktestRouter(context) {
   router.patch(
     "/runs/:id/favorite",
     [
+      param("id").isInt({ min: 1 }),
       body("isFavorite").isBoolean(),
       body("favoriteLabel").optional().isString(),
       body("notes").optional().isString()
@@ -256,6 +260,7 @@ module.exports = function createBacktestRouter(context) {
   router.patch(
     "/runs/:id/promote",
     [
+      param("id").isInt({ min: 1 }),
       body("slot").optional().isIn(["champion", "challenger"]),
       body("regimeId").optional().isIn(["trend", "sideways", "volatile"])
     ],
@@ -350,7 +355,9 @@ module.exports = function createBacktestRouter(context) {
     }
   });
 
-  router.patch("/runs/:id/approve-live", async (req, res) => {
+  router.patch("/runs/:id/approve-live", [param("id").isInt({ min: 1 })], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ ok: false, errors: errors.array() });
     try {
       const run = await context.backtestRuns.getBacktestRunById(req.params.id);
 

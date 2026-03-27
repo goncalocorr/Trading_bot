@@ -1,3 +1,5 @@
+const crypto = require("crypto");
+
 const API_SECRET = process.env.API_SECRET || "";
 
 /**
@@ -12,7 +14,10 @@ function requireApiKey(req, res, next) {
 
   const provided = req.headers["x-api-key"] || "";
 
-  if (provided !== API_SECRET) {
+  if (
+    provided.length !== API_SECRET.length ||
+    !crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(API_SECRET))
+  ) {
     return res.status(401).json({ ok: false, message: "Unauthorized" });
   }
 
