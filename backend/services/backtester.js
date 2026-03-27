@@ -462,7 +462,8 @@ async function collectStrategyCandidates({
         patternSnapshot,
         orderBookSnapshot,
         signalTimeframe,
-        executionThreshold: scoreThreshold
+        executionThreshold: scoreThreshold,
+        strategyId: signal.metadata?.strategyId || strategy.id || ""
       });
 
       candidates.push({

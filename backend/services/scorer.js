@@ -11,11 +11,18 @@ function normalizeSide(side) {
   return String(side || "").toUpperCase();
 }
 
-function evaluateRsi(signalSide, indicatorSnapshot, signalTimeframe = "15m") {
+function evaluateRsi(signalSide, indicatorSnapshot, signalTimeframe = "15m", strategyId = "") {
   const rsi = indicatorSnapshot?.[signalTimeframe]?.rsi14;
   const normalizedSide = normalizeSide(signalSide);
-  // BUY: RSI in pullback zone (30-65) or deeply oversold. SELL: RSI in distribution zone (35-70) or overbought.
-  const confirms = (normalizedSide === "BUY" && rsi >= 30 && rsi <= 65) || (normalizedSide === "SELL" && rsi >= 35 && rsi <= 70);
+
+  let confirms;
+  if (strategyId === "mean_reversion") {
+    // mean_reversion fires exactly when RSI is extreme — reward it
+    confirms = (normalizedSide === "BUY" && rsi < 35) || (normalizedSide === "SELL" && rsi > 65);
+  } else {
+    // pullback_continuation and others: RSI should be in the pullback/distribution zone
+    confirms = (normalizedSide === "BUY" && rsi >= 30 && rsi <= 65) || (normalizedSide === "SELL" && rsi >= 35 && rsi <= 70);
+  }
 
   return {
     label: "RSI confirms signal direction",
@@ -24,7 +31,8 @@ function evaluateRsi(signalSide, indicatorSnapshot, signalTimeframe = "15m") {
     passed: confirms,
     details: {
       value: rsi,
-      signalSide: normalizedSide
+      signalSide: normalizedSide,
+      strategyId: strategyId || "default"
     }
   };
 }
@@ -205,10 +213,11 @@ function computeScoreBreakdown({
   patternSnapshot,
   orderBookSnapshot,
   signalTimeframe = "15m",
-  executionThreshold = 8
+  executionThreshold = 8,
+  strategyId = ""
 }) {
   const breakdownItems = [
-    evaluateRsi(signalSide, indicatorSnapshot, signalTimeframe),
+    evaluateRsi(signalSide, indicatorSnapshot, signalTimeframe, strategyId),
     evaluateEmaTrend(signalSide, indicatorSnapshot, signalTimeframe),
     evaluateMultiTimeframe(signalSide, indicatorSnapshot),
     evaluateVolume(indicatorSnapshot, signalTimeframe),
@@ -223,11 +232,14 @@ function computeScoreBreakdown({
   const newsScoreAdjustment = Number(sentimentSnapshot?.evaluations?.news?.scoreAdjustment || 0);
 
   // Penalty for contradictory signals: overbought RSI on BUY, oversold on SELL.
+  // mean_reversion intentionally fires at RSI extremes — no penalty for it.
   const rsi15m = indicatorSnapshot?.[signalTimeframe]?.rsi14;
   const normalizedSignalSide = normalizeSide(signalSide);
   let signalPenalty = 0;
-  if (normalizedSignalSide === "BUY" && rsi15m > 70) signalPenalty -= 1;
-  if (normalizedSignalSide === "SELL" && rsi15m < 30) signalPenalty -= 1;
+  if (strategyId !== "mean_reversion") {
+    if (normalizedSignalSide === "BUY" && rsi15m > 70) signalPenalty -= 1;
+    if (normalizedSignalSide === "SELL" && rsi15m < 30) signalPenalty -= 1;
+  }
 
   const totalScore = Math.max(0, Math.min(MAX_SCORE, baseScore + newsScoreAdjustment + signalPenalty));
   const decision = buildDecision(totalScore, executionThreshold);
@@ -301,7 +313,8 @@ async function scoreSignal({
     sentimentSnapshot: context.sentimentSnapshot,
     patternSnapshot: context.patternSnapshot,
     orderBookSnapshot: context.orderBookSnapshot,
-    executionThreshold: scoreThreshold
+    executionThreshold: scoreThreshold,
+    strategyId: metadata?.strategyId || metadata?.strategy || ""
   });
 
   return {
