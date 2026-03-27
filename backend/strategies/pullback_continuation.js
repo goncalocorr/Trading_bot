@@ -8,15 +8,19 @@ function isBullishPullback(snapshot15m, snapshot1h, snapshot4h) {
   const close = Number(trend15m?.close || 0);
   const ema9 = Number(trend15m?.ema9 || 0);
   const ema21 = Number(trend15m?.ema21 || 0);
-  const priceNearPullbackZone = close >= ema21 && close <= ema9 * 1.003;
+  const atr14 = Number(snapshot15m?.atr14 || 0);
+  // ATR-based pullback zone: allows price to dip up to 0.5 ATR below EMA21 (natural breathing room)
+  const pullbackFloor = ema21 - atr14 * 0.5;
+  const pullbackCeiling = ema9 * 1.01;
+  const priceNearPullbackZone = close >= pullbackFloor && close <= pullbackCeiling;
 
   return (
     trend1h?.bias === "bullish" &&
     trend4h?.bias === "bullish" &&
     trend15m?.priceAboveEma200 &&
     priceNearPullbackZone &&
-    rsi15m >= 40 &&
-    rsi15m <= 58 &&
+    rsi15m >= 35 &&
+    rsi15m <= 65 &&
     volume15m?.isAboveAverage &&
     !marketState15m?.isSideways
   );

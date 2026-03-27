@@ -32,7 +32,7 @@ function detectDoji(candle) {
   const range = getRange(candle);
 
   return {
-    detected: range > 0 && body / range <= 0.1,
+    detected: range > 0 && body / range <= 0.25,
     direction: "neutral",
     name: "Doji"
   };
@@ -45,7 +45,7 @@ function detectHammer(candle) {
   const upper = upperShadow(candle);
 
   return {
-    detected: range > 0 && lower >= body * 2 && upper <= body * 0.5,
+    detected: range > 0 && lower >= body * 1.5 && upper <= body * 0.5,
     direction: "bullish",
     name: "Hammer"
   };

@@ -14,7 +14,8 @@ function normalizeSide(side) {
 function evaluateRsi(signalSide, indicatorSnapshot, signalTimeframe = "15m") {
   const rsi = indicatorSnapshot?.[signalTimeframe]?.rsi14;
   const normalizedSide = normalizeSide(signalSide);
-  const confirms = (normalizedSide === "BUY" && rsi < 35) || (normalizedSide === "SELL" && rsi > 65);
+  // BUY: RSI in pullback zone (30-65) or deeply oversold. SELL: RSI in distribution zone (35-70) or overbought.
+  const confirms = (normalizedSide === "BUY" && rsi >= 30 && rsi <= 65) || (normalizedSide === "SELL" && rsi >= 35 && rsi <= 70);
 
   return {
     label: "RSI confirms signal direction",
@@ -220,7 +221,15 @@ function computeScoreBreakdown({
 
   const baseScore = breakdownItems.reduce((sum, item) => sum + item.points, 0);
   const newsScoreAdjustment = Number(sentimentSnapshot?.evaluations?.news?.scoreAdjustment || 0);
-  const totalScore = Math.max(0, Math.min(MAX_SCORE, baseScore + newsScoreAdjustment));
+
+  // Penalty for contradictory signals: overbought RSI on BUY, oversold on SELL.
+  const rsi15m = indicatorSnapshot?.[signalTimeframe]?.rsi14;
+  const normalizedSignalSide = normalizeSide(signalSide);
+  let signalPenalty = 0;
+  if (normalizedSignalSide === "BUY" && rsi15m > 70) signalPenalty -= 1;
+  if (normalizedSignalSide === "SELL" && rsi15m < 30) signalPenalty -= 1;
+
+  const totalScore = Math.max(0, Math.min(MAX_SCORE, baseScore + newsScoreAdjustment + signalPenalty));
   const decision = buildDecision(totalScore, executionThreshold);
   const executionMode = binanceService.getExecutionMode(totalScore);
   const blockingReasons = breakdownItems.filter((item) => !item.passed).map((item) => item.label);
