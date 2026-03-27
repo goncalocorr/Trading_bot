@@ -1,6 +1,7 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import ActiveTrades from "./ActiveTrades";
 import CapitalChart from "./CapitalChart";
+import ConfirmModal from "./ConfirmModal";
 import MissedOpportunities from "./MissedOpportunities";
 import SignalDebugPanel from "./SignalDebugPanel";
 import StatsPanel from "./StatsPanel";
@@ -171,6 +172,7 @@ function Dashboard() {
     regimeChampionVolatileRunId: null,
     approvedLiveRunId: null
   });
+  const [confirmModal, setConfirmModal] = useState({ open: false, title: "", message: "", confirmLabel: "", confirmClass: "", onConfirm: null });
   const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -337,26 +339,32 @@ function Dashboard() {
     }
   };
 
-  const handleForceTestTrade = async () => {
-    if (!window.confirm(`Force a paper BUY trade on ${manualSignal.pair}?\n\nThis bypasses scoring and is only for pipeline validation.`)) {
-      return;
-    }
+  const handleForceTestTrade = () => {
+    setConfirmModal({
+      open: true,
+      title: "Force paper trade?",
+      message: `This will open a BUY on ${manualSignal.pair} bypassing all scoring guards. For pipeline validation only.`,
+      confirmLabel: "Force trade",
+      confirmClass: "bg-orange-500 text-white hover:bg-orange-400",
+      onConfirm: async () => {
+        setConfirmModal((c) => ({ ...c, open: false }));
+        setActionLoading(true);
 
-    setActionLoading(true);
-
-    try {
-      const response = await forcePaperTest(manualSignal.pair);
-      const dashboardResponse = await fetchDashboard();
-      setDashboardData(dashboardResponse);
-      await refreshTradeHistory();
-      setError("");
-      setManualFeedback(buildManualSignalFeedback(response.result));
-    } catch (requestError) {
-      setError(requestError.response?.data?.message || requestError.message);
-      setManualFeedback(null);
-    } finally {
-      setActionLoading(false);
-    }
+        try {
+          const response = await forcePaperTest(manualSignal.pair);
+          const dashboardResponse = await fetchDashboard();
+          setDashboardData(dashboardResponse);
+          await refreshTradeHistory();
+          setError("");
+          setManualFeedback(buildManualSignalFeedback(response.result));
+        } catch (requestError) {
+          setError(requestError.response?.data?.message || requestError.message);
+          setManualFeedback(null);
+        } finally {
+          setActionLoading(false);
+        }
+      }
+    });
   };
 
   const handleCancelTrade = async (id) => {
@@ -595,6 +603,15 @@ function Dashboard() {
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.18),_transparent_30%),linear-gradient(135deg,_#020617_0%,_#111827_45%,_#1e293b_100%)] text-slate-100">
+      <ConfirmModal
+        open={confirmModal.open}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmLabel={confirmModal.confirmLabel}
+        confirmClass={confirmModal.confirmClass}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal((c) => ({ ...c, open: false }))}
+      />
       <div className="mx-auto max-w-7xl px-6 py-10">
         <header className="rounded-[32px] border border-white/10 bg-slate-950/55 p-7 shadow-2xl shadow-black/20 backdrop-blur">
           <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
@@ -610,13 +627,28 @@ function Dashboard() {
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:w-[420px]">
-              {headlineCards.map((card) => (
-                <div key={card.label} className="rounded-[24px] border border-white/10 bg-white/5 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{card.label}</p>
-                  <p className={`mt-2 text-xl font-semibold ${card.accent}`}>{card.value}</p>
-                </div>
-              ))}
+            <div className="flex flex-col gap-3 xl:w-[420px]">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {headlineCards.map((card) => (
+                  <div key={card.label} className="rounded-[24px] border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{card.label}</p>
+                    <p className={`mt-2 text-xl font-semibold ${card.accent}`}>{card.value}</p>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setLoadingDashboard(true); }}
+                disabled={loadingDashboard}
+                className="flex items-center justify-center gap-2 rounded-[20px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-white/10 disabled:opacity-50"
+              >
+                {loadingDashboard ? (
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+                ) : (
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                )}
+                {loadingDashboard ? "Refreshing…" : "Refresh"}
+              </button>
             </div>
           </div>
         </header>
@@ -678,9 +710,10 @@ function Dashboard() {
               type="button"
               onClick={handleManualTrigger}
               disabled={actionLoading}
-              className="rounded-2xl bg-amber-300 px-5 py-3 text-sm font-semibold text-slate-900 transition hover:bg-amber-200 disabled:opacity-50"
+              className="flex items-center justify-center gap-2 rounded-2xl bg-amber-300 px-5 py-3 text-sm font-semibold text-slate-900 transition hover:bg-amber-200 disabled:opacity-50"
             >
-              {actionLoading ? "Submitting..." : "Manual signal"}
+              {actionLoading && <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>}
+              {actionLoading ? "Submitting…" : "Manual signal"}
             </button>
           </div>
           {settings?.tradingMode === "paper" && (

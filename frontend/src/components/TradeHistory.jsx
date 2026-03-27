@@ -10,6 +10,69 @@ function formatValue(value) {
   return value === null || value === undefined ? "n/a" : Number(value).toFixed(4);
 }
 
+function ScoreBreakdown({ breakdown }) {
+  if (!breakdown) return <p className="mt-3 text-sm text-slate-500">No breakdown available.</p>;
+  const items = breakdown.items || [];
+  const total = breakdown.totalScore ?? "—";
+  const max = breakdown.maxScore ?? 12;
+  const decision = breakdown.decision;
+  const decisionColor = decision === "EXECUTE" ? "text-emerald-300" : decision === "MISSED" ? "text-amber-300" : "text-slate-400";
+
+  return (
+    <div className="mt-3 rounded-2xl bg-slate-950 p-4 space-y-2">
+      <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-3">
+        <span className="text-sm text-slate-300">Total score</span>
+        <span className="font-mono font-bold text-white">{total}/{max}</span>
+      </div>
+      {items.map((item, i) => (
+        <div key={i} className="flex items-center justify-between text-xs">
+          <span className={item.passed ? "text-slate-300" : "text-slate-500 line-through"}>{item.label}</span>
+          <span className={`font-mono font-semibold ${item.points > 0 ? "text-emerald-400" : "text-slate-600"}`}>
+            +{item.points}/{item.maxPoints}
+          </span>
+        </div>
+      ))}
+      {decision && (
+        <div className={`pt-2 border-t border-white/10 text-xs font-semibold ${decisionColor}`}>
+          Decision: {decision}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IndicatorSummary({ snapshot }) {
+  if (!snapshot) return <p className="mt-3 text-sm text-slate-500">No snapshot available.</p>;
+  const tf = snapshot["15m"] || {};
+  const multi = snapshot.multiTimeframe || {};
+
+  return (
+    <div className="mt-3 rounded-2xl bg-slate-950 p-4 space-y-2 text-xs text-slate-300">
+      {tf.rsi14 !== undefined && (
+        <div className="flex justify-between"><span>RSI 14 (15m)</span><span className="font-mono">{Number(tf.rsi14).toFixed(1)}</span></div>
+      )}
+      {tf.atr14 !== undefined && (
+        <div className="flex justify-between"><span>ATR 14 (15m)</span><span className="font-mono">{Number(tf.atr14).toFixed(4)}</span></div>
+      )}
+      {tf.trend?.bias && (
+        <div className="flex justify-between"><span>Trend bias (15m)</span><span className={`font-semibold ${tf.trend.bias === "bullish" ? "text-emerald-400" : tf.trend.bias === "bearish" ? "text-rose-400" : "text-slate-400"}`}>{tf.trend.bias}</span></div>
+      )}
+      {tf.volume && (
+        <div className="flex justify-between"><span>Volume above avg</span><span className={tf.volume.isAboveAverage ? "text-emerald-400" : "text-slate-500"}>{tf.volume.isAboveAverage ? "Yes" : "No"}</span></div>
+      )}
+      {tf.marketState && (
+        <div className="flex justify-between"><span>Market state</span><span className={tf.marketState.isSideways ? "text-amber-400" : "text-emerald-400"}>{tf.marketState.isSideways ? "Sideways" : "Trending"}</span></div>
+      )}
+      {multi.direction && (
+        <div className="flex justify-between border-t border-white/10 pt-2"><span>Multi-TF direction</span><span className="font-semibold">{multi.direction}</span></div>
+      )}
+      {multi.reason && (
+        <div className="text-slate-500 pt-1">{multi.reason}</div>
+      )}
+    </div>
+  );
+}
+
 function TradeHistory({ trades = [], filters, onFilterChange, onApplyFilters }) {
   const [selectedTradeId, setSelectedTradeId] = useState(null);
   const [selectedTradeOrders, setSelectedTradeOrders] = useState([]);
@@ -166,15 +229,11 @@ function TradeHistory({ trades = [], filters, onFilterChange, onApplyFilters }) 
           <div className="grid gap-4 lg:grid-cols-2">
           <div>
             <h3 className="text-lg font-semibold text-white">Score Breakdown</h3>
-            <pre className="mt-3 overflow-x-auto rounded-2xl bg-slate-950 p-4 text-xs text-slate-300">
-              {JSON.stringify(selectedTrade.score_breakdown, null, 2)}
-            </pre>
+            <ScoreBreakdown breakdown={selectedTrade.score_breakdown} />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-white">Indicator Snapshot</h3>
-            <pre className="mt-3 overflow-x-auto rounded-2xl bg-slate-950 p-4 text-xs text-slate-300">
-              {JSON.stringify(selectedTrade.indicators_snapshot, null, 2)}
-            </pre>
+            <h3 className="text-lg font-semibold text-white">Market Snapshot</h3>
+            <IndicatorSummary snapshot={selectedTrade.indicators_snapshot} />
           </div>
           </div>
         </div>
