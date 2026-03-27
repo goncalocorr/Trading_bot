@@ -1,7 +1,10 @@
 import axios from "axios";
 
+const apiKey = import.meta.env.VITE_API_SECRET || "";
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || ""
+  baseURL: import.meta.env.VITE_API_BASE_URL || "",
+  headers: apiKey ? { "X-API-Key": apiKey } : {}
 });
 
 export async function fetchDashboard() {
@@ -104,5 +107,12 @@ export async function promoteBacktestRun(id, payload = {}) {
 
 export async function approveBacktestRunLive(id) {
   const { data } = await api.patch(`/api/backtest/runs/${id}/approve-live`);
+  return data;
+}
+
+export async function fetchMissedOpportunities({ pair, limit, offset } = {}) {
+  const { data } = await api.get("/api/dashboard/missed-opportunities", {
+    params: { pair, limit, offset }
+  });
   return data;
 }

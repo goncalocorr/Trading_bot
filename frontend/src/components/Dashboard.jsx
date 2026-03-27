@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import ActiveTrades from "./ActiveTrades";
 import CapitalChart from "./CapitalChart";
+import MissedOpportunities from "./MissedOpportunities";
 import SignalDebugPanel from "./SignalDebugPanel";
 import StatsPanel from "./StatsPanel";
 import {
@@ -30,6 +31,7 @@ const TradeHistory = lazy(() => import("./TradeHistory"));
 const tabs = [
   { id: "overview", label: "Overview" },
   { id: "history", label: "History" },
+  { id: "missed", label: "Missed" },
   { id: "backtest", label: "Backtest" },
   { id: "settings", label: "Settings" }
 ];
@@ -744,6 +746,12 @@ function Dashboard() {
                 onApplyFilters={refreshTradeHistory}
               />
             </Suspense>
+          ) : null}
+
+          {activeTab === "missed" ? (
+            <MissedOpportunities
+              tradingPairs={settings?.tradingPairs || []}
+            />
           ) : null}
 
           {activeTab === "backtest" ? (

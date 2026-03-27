@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /c/Users/saloc/Documents/trading-bot/backend/services/*.js)",
+      "Bash(wc -l /c/Users/saloc/Documents/trading-bot/backend/models/*.js)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm --prefix backend run test)"
+    ]
+  }
+}

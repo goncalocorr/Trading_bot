@@ -45,6 +45,8 @@ const createDashboardRouter = require("./routes/dashboard");
 const createCancelRouter = require("./routes/cancel");
 const createBacktestRouter = require("./routes/backtest");
 const backtesterService = require("./services/backtester");
+const paperBroker = require("./services/paperbroker");
+const { requireApiKey } = require("./middleware/auth");
 
 dotenv.config();
 
@@ -1045,6 +1047,7 @@ app.get("/health", async (_req, res) => {
 });
 
 app.use("/webhook", createWebhookRouter(context));
+app.use("/api", requireApiKey);
 app.use("/api/trades", createTradesRouter(context));
 app.use("/api/trades", createCancelRouter(context));
 app.use("/api/dashboard", createDashboardRouter(context));
@@ -1052,6 +1055,7 @@ app.use("/api/backtest", createBacktestRouter(context));
 
 async function startServer() {
   await db.initDatabase();
+  await paperBroker.init();
   await runtimePersistence.hydrateRuntime(runtime);
   await ensureInitialCapitalSnapshot();
   runtime.startupStatus = await startupGuard.run();

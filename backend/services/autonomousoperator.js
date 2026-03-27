@@ -149,6 +149,13 @@ class AutonomousOperator {
         })
       : null;
 
+    const pairStates = Object.fromEntries(
+      Object.entries(this.runtime.signalAlertState || {}).map(([key, val]) => [
+        key,
+        val?.currentState || "UNKNOWN"
+      ])
+    );
+
     return {
       mode: this.runtime.autonomyMode,
       tradingMode: this.runtime.tradingMode,
@@ -160,6 +167,7 @@ class AutonomousOperator {
       circuitBreakers: this.runtime.circuitBreakers,
       autoPauseReason: this.runtime.autoPauseReason || null,
       approvedLiveRunId: this.runtime.approvedLiveRunId || null,
+      pairStates,
       automationFlags: {
         autoSwapEnabled: Boolean(this.runtime.autoSwapEnabled),
         autoApproveLiveEnabled: Boolean(this.runtime.autoApproveLiveEnabled),

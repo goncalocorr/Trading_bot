@@ -1,5 +1,6 @@
 const express = require("express");
 const { body, query, validationResult } = require("express-validator");
+const MissedOpportunity = require("../models/MissedOpportunity");
 
 module.exports = function createDashboardRouter(context) {
   const router = express.Router();
@@ -62,6 +63,37 @@ module.exports = function createDashboardRouter(context) {
         });
 
         return res.json({ ok: true, debug });
+      } catch (error) {
+        return res.status(500).json({ ok: false, message: error.message });
+      }
+    }
+  );
+
+  router.get(
+    "/missed-opportunities",
+    [
+      query("pair").optional().isString(),
+      query("limit").optional().isInt({ min: 1, max: 200 }),
+      query("offset").optional().isInt({ min: 0 })
+    ],
+    async (req, res) => {
+      const errors = validationResult(req);
+
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ ok: false, errors: errors.array() });
+      }
+
+      try {
+        const [opportunities, stats] = await Promise.all([
+          MissedOpportunity.getRecent({
+            pair: req.query.pair || null,
+            limit: Number(req.query.limit || 50),
+            offset: Number(req.query.offset || 0)
+          }),
+          MissedOpportunity.getStats()
+        ]);
+
+        return res.json({ ok: true, opportunities, stats });
       } catch (error) {
         return res.status(500).json({ ok: false, message: error.message });
       }

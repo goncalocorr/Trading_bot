@@ -178,6 +178,10 @@ class TelegramService {
   }
 
   formatAutonomyHeartbeat(payload = {}) {
+    const pairStateLines = Object.entries(payload.pairStates || {})
+      .map(([key, state]) => `  ${key}: ${state}`)
+      .join("\n");
+
     return [
       "Autonomy heartbeat",
       payload.mode ? `Mode: ${payload.mode}` : null,
@@ -189,6 +193,7 @@ class TelegramService {
       payload.liveReadiness?.approvalGate?.status
         ? `Live gate: ${payload.liveReadiness.approvalGate.status}`
         : null,
+      pairStateLines ? `Pairs:\n${pairStateLines}` : null,
       payload.autoPauseReason ? `Auto pause: ${payload.autoPauseReason}` : null
     ]
       .filter(Boolean)

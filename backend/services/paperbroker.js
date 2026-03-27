@@ -2,11 +2,14 @@ const fs = require("fs");
 const path = require("path");
 
 const binanceService = require("./binance");
+const RuntimeStateModel = require("../models/RuntimeState");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const STATE_KEY = "paper_broker_state";
+// Legacy JSON path kept for one-time migration only.
 const PAPER_STATE_DIR = path.join(__dirname, "..", "data");
 const PAPER_STATE_PATH = path.join(PAPER_STATE_DIR, "paper-broker-state.json");
 
@@ -17,7 +20,78 @@ class PaperBroker {
     this.orders = new Map();
     this.orderLists = new Map();
     this.tradeHistory = [];
-    this.loadState();
+    // Populated by init() after the DB is ready.
+    this._initialized = false;
+  }
+
+  /**
+   * Must be called once after the database is ready (called from startServer).
+   * Loads state from MySQL, falling back to the legacy JSON file for migration.
+   */
+  async init() {
+    if (this._initialized) {
+      return;
+    }
+
+    try {
+      const saved = await RuntimeStateModel.getValue(STATE_KEY);
+
+      if (saved) {
+        this._applyState(saved);
+      } else {
+        // One-time migration: try to load from legacy JSON file.
+        this._tryLoadLegacyJson();
+        if (this._hasAnyState()) {
+          await this._persistAsync();
+        }
+      }
+    } catch (error) {
+      console.warn(`Paper broker MySQL init failed, falling back to JSON: ${error.message}`);
+      this._tryLoadLegacyJson();
+    }
+
+    this._initialized = true;
+  }
+
+  _hasAnyState() {
+    return this.orders.size > 0 || this.orderLists.size > 0 || this.tradeHistory.length > 0;
+  }
+
+  _applyState(parsedState) {
+    this.nextOrderId = Number(parsedState.nextOrderId || this.nextOrderId);
+    this.nextOrderListId = Number(parsedState.nextOrderListId || this.nextOrderListId);
+    this.orders = new Map(
+      (Array.isArray(parsedState.orders) ? parsedState.orders : []).map((order) => [Number(order.orderId), order])
+    );
+    this.orderLists = new Map(
+      (Array.isArray(parsedState.orderLists) ? parsedState.orderLists : []).map((orderList) => [
+        Number(orderList.orderListId),
+        orderList
+      ])
+    );
+    this.tradeHistory = Array.isArray(parsedState.tradeHistory) ? parsedState.tradeHistory : [];
+  }
+
+  _tryLoadLegacyJson() {
+    try {
+      if (!fs.existsSync(PAPER_STATE_PATH)) {
+        return;
+      }
+
+      const rawState = fs.readFileSync(PAPER_STATE_PATH, "utf8");
+      const parsedState = JSON.parse(rawState);
+      this._applyState(parsedState);
+    } catch (error) {
+      console.warn(`Paper broker legacy JSON state could not be restored: ${error.message}`);
+    }
+  }
+
+  async _persistAsync() {
+    try {
+      await RuntimeStateModel.setValue(STATE_KEY, this.serializeState());
+    } catch (error) {
+      console.warn(`Paper broker MySQL persist failed: ${error.message}`);
+    }
   }
 
   generateOrderId() {
@@ -28,10 +102,6 @@ class PaperBroker {
   generateOrderListId() {
     this.nextOrderListId += 1;
     return this.nextOrderListId;
-  }
-
-  ensureStateDirectory() {
-    fs.mkdirSync(PAPER_STATE_DIR, { recursive: true });
   }
 
   serializeState() {
@@ -45,39 +115,8 @@ class PaperBroker {
   }
 
   persistState() {
-    this.ensureStateDirectory();
-    fs.writeFileSync(PAPER_STATE_PATH, JSON.stringify(this.serializeState(), null, 2));
-  }
-
-  loadState() {
-    try {
-      if (!fs.existsSync(PAPER_STATE_PATH)) {
-        return;
-      }
-
-      const rawState = fs.readFileSync(PAPER_STATE_PATH, "utf8");
-      const parsedState = JSON.parse(rawState);
-
-      this.nextOrderId = Number(parsedState.nextOrderId || this.nextOrderId);
-      this.nextOrderListId = Number(parsedState.nextOrderListId || this.nextOrderListId);
-      this.orders = new Map(
-        (Array.isArray(parsedState.orders) ? parsedState.orders : []).map((order) => [Number(order.orderId), order])
-      );
-      this.orderLists = new Map(
-        (Array.isArray(parsedState.orderLists) ? parsedState.orderLists : []).map((orderList) => [
-          Number(orderList.orderListId),
-          orderList
-        ])
-      );
-      this.tradeHistory = Array.isArray(parsedState.tradeHistory) ? parsedState.tradeHistory : [];
-    } catch (error) {
-      console.warn(`Paper broker state could not be restored: ${error.message}`);
-      this.nextOrderId = Date.now();
-      this.nextOrderListId = Date.now();
-      this.orders = new Map();
-      this.orderLists = new Map();
-      this.tradeHistory = [];
-    }
+    // Fire-and-forget async persist to MySQL. In-memory state is always authoritative.
+    this._persistAsync();
   }
 
   async getBestBookTicker(symbol) {
