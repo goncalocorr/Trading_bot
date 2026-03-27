@@ -110,6 +110,11 @@ export async function approveBacktestRunLive(id) {
   return data;
 }
 
+export async function forcePaperTest(pair) {
+  const { data } = await api.post("/api/trades/force-paper-test", { pair, confirm: true });
+  return data;
+}
+
 export async function fetchMissedOpportunities({ pair, limit, offset } = {}) {
   const { data } = await api.get("/api/dashboard/missed-opportunities", {
     params: { pair, limit, offset }

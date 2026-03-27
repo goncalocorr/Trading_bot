@@ -116,5 +116,35 @@ module.exports = function createTradesRouter(context) {
     }
   );
 
+  router.post(
+    "/force-paper-test",
+    [
+      body("pair").optional().isString().notEmpty(),
+      body("confirm").isBoolean().equals("true")
+    ],
+    async (req, res) => {
+      const errors = validationResult(req);
+
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ ok: false, errors: errors.array() });
+      }
+
+      if (context.runtime.tradingMode !== "paper") {
+        return res.status(403).json({ ok: false, message: "Force trade only allowed in paper mode." });
+      }
+
+      try {
+        const result = await context.forcePaperTrade({
+          pair: req.body.pair || context.runtime.tradingPairs[0],
+          side: "BUY"
+        });
+
+        return res.json({ ok: true, result });
+      } catch (error) {
+        return res.status(500).json({ ok: false, message: error.message });
+      }
+    }
+  );
+
   return router;
 };

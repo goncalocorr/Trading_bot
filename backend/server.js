@@ -833,8 +833,19 @@ async function processSignal({
   }
 
   const executionGuards = evaluateSignalExecutionGuards(scoreResult, normalizedSide);
+  const runtimeDecision = determineRuntimeDecision(scoreResult.score.totalScore);
 
   if (executionGuards.blocked) {
+    // Still record as missed opportunity when guards block an otherwise scoreable signal.
+    if (runtimeDecision === "MISSED") {
+      TradeModel.createMissedOpportunity({
+        pair: normalizedPair,
+        score: scoreResult.score.totalScore,
+        reason: executionGuards.reason,
+        indicatorsSnapshot: scoreResult.snapshots.indicators
+      }).catch(() => {});
+    }
+
     return {
       ok: false,
       action: "blocked",
@@ -842,8 +853,6 @@ async function processSignal({
       score: scoreResult.score
     };
   }
-
-  const runtimeDecision = determineRuntimeDecision(scoreResult.score.totalScore);
 
   if (triggerSource === "auto" && metadata.shadowModeExecutionIntent === "shadow_only") {
     return {
@@ -990,6 +999,70 @@ async function reconcileExchangeTrades() {
   }
 }
 
+/**
+ * Forces a market BUY in paper mode only. Used to validate the full execution pipeline
+ * (entry order → OCO → trade record → Telegram notification → P&L tracking).
+ * Never allowed in live mode.
+ */
+async function forcePaperTrade({ pair, side = "BUY" }) {
+  if (runtime.tradingMode !== "paper") {
+    return {
+      ok: false,
+      action: "blocked",
+      reason: "Force trade is only allowed in paper mode."
+    };
+  }
+
+  const normalizedPair = String(pair || runtime.tradingPairs[0]).toUpperCase();
+  const normalizedSide = String(side).toUpperCase();
+
+  // Score the signal for real to get accurate ATR and indicator snapshots.
+  const scoreResult = await scorerService.scoreSignal({
+    pair: normalizedPair,
+    side: normalizedSide,
+    triggerSource: "manual",
+    scoreThreshold: 0, // always execute regardless of score
+    metadata: { tradingMode: "PAPER", forcedTest: true }
+  });
+
+  // Override the decision so it always executes.
+  scoreResult.score.totalScore = Math.max(scoreResult.score.totalScore, runtime.scoreThreshold);
+  scoreResult.score.executionMode = "MARKET";
+
+  if (normalizedSide !== "BUY") {
+    return {
+      ok: false,
+      action: "blocked",
+      reason: "Force trade currently only supports BUY side."
+    };
+  }
+
+  const availableCapitalState = await riskManager.getAvailableCapitalState();
+  const currentRegimeId = inferRegimeIdFromIndicators(scoreResult.snapshots.indicators);
+  const capitalAllocation = capitalAllocator.buildAllocationPlan({
+    currentRegimeId,
+    runtimeRiskPerTrade: runtime.riskPerTrade,
+    availableCapital: availableCapitalState.availableCapital,
+    reservedCapital: availableCapitalState.reservedCapital
+  });
+
+  return executionOrchestrator.executeBuyTrade({
+    pair: normalizedPair,
+    scoreResult,
+    triggerSource: "manual",
+    metadata: {
+      tradingMode: "PAPER",
+      forcedTest: true,
+      capitalAllocation,
+      autonomyMode: runtime.autonomyMode
+    },
+    buildTradeRiskPlan: (payload) => riskManager.buildTradeRiskPlan({
+      ...payload,
+      riskPerTradeOverride: capitalAllocation.effectiveRiskPerTrade
+    })
+  });
+}
+
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
@@ -1012,6 +1085,7 @@ const context = {
   backtestRunMarks: BacktestRunMarkModel,
   backtestPromotionEvents: BacktestPromotionEventModel,
   processSignal,
+  forcePaperTrade,
   cancelTrade: (tradeId, cancelReason, metadata) =>
     executionOrchestrator.closeTrade(tradeId, cancelReason, metadata),
   buildDashboardSnapshot: () => dashboardBuilder.buildDashboardSnapshot(),

@@ -17,6 +17,7 @@ import {
   fetchSettings,
   fetchTrades,
   approveBacktestRunLive,
+  forcePaperTest,
   promoteBacktestRun,
   runBacktest,
   runBacktestExperiments,
@@ -325,6 +326,28 @@ function Dashboard() {
       const debugResponse = await fetchSignalDebug(manualSignal.pair, manualSignal.side);
       setDashboardData(dashboardResponse);
       setSignalDebug(debugResponse.debug || null);
+      await refreshTradeHistory();
+      setError("");
+      setManualFeedback(buildManualSignalFeedback(response.result));
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message);
+      setManualFeedback(null);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleForceTestTrade = async () => {
+    if (!window.confirm(`Force a paper BUY trade on ${manualSignal.pair}?\n\nThis bypasses scoring and is only for pipeline validation.`)) {
+      return;
+    }
+
+    setActionLoading(true);
+
+    try {
+      const response = await forcePaperTest(manualSignal.pair);
+      const dashboardResponse = await fetchDashboard();
+      setDashboardData(dashboardResponse);
       await refreshTradeHistory();
       setError("");
       setManualFeedback(buildManualSignalFeedback(response.result));
@@ -660,6 +683,19 @@ function Dashboard() {
               {actionLoading ? "Submitting..." : "Manual signal"}
             </button>
           </div>
+          {settings?.tradingMode === "paper" && (
+            <div className="mt-3 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleForceTestTrade}
+                disabled={actionLoading}
+                className="rounded-2xl border border-orange-500/40 bg-orange-500/10 px-5 py-2.5 text-sm font-semibold text-orange-300 transition hover:bg-orange-500/20 disabled:opacity-50"
+              >
+                Force test trade (paper)
+              </button>
+              <span className="text-xs text-slate-500">Bypasses scoring — validates pipeline only</span>
+            </div>
+          )}
         </section>
 
         <div className="mt-6 space-y-6">
