@@ -34,7 +34,7 @@ class TradeAnalytics {
       };
     }
 
-    if (trend15m?.bias && trend15m.bias !== "neutral") {
+    if (trend15m?.bias === "bullish" || trend15m?.bias === "bearish") {
       return {
         regimeId: "mixed",
         regimeLabel: "Mixed"

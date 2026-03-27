@@ -551,6 +551,16 @@ class TelegramService {
     return this.sendMessage(this.formatCircuitBreakerMessage(payload));
   }
 
+  async notifyStartupWithOpenTrades(openTrades = []) {
+    const locale = this.getLocale();
+    const pairs = [...new Set(openTrades.map((t) => t.pair))].join(", ");
+    const count = openTrades.length;
+    const msg = locale === "pt-PT"
+      ? `\u26A0\uFE0F Bot reiniciado com <b>${count}</b> trade(s) em aberto: <b>${pairs}</b>\nVerifica as posicoes antes de operar.`
+      : `\u26A0\uFE0F Bot restarted with <b>${count}</b> open trade(s): <b>${pairs}</b>\nReview open positions before trading.`;
+    return this.sendMessage(msg);
+  }
+
   async notifyAutonomyHeartbeat(payload) {
     return this.sendMessage(this.formatAutonomyHeartbeat(payload));
   }

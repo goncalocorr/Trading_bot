@@ -1,6 +1,6 @@
 module.exports = {
   id: "mean_reversion",
-  description: "Fades RSI extremes. BUY when oversold (<30), SELL when overbought (>70). Does not require sideways market.",
+  description: "Fades RSI extremes. BUY when oversold (<30), SELL when overbought (>70). Blocked only by confirmed 4h structural trend against the trade.",
 
   async scan({ pair, candlesByTimeframe, indicatorsService }) {
     const indicators = indicatorsService.buildIndicatorSnapshot(candlesByTimeframe);
@@ -11,14 +11,15 @@ module.exports = {
     }
 
     const rsi = Number(snapshot15m.rsi14 || 0);
-    const trend = snapshot15m.trend;
+    // Use 4h structural bias to filter — far less sensitive than 15m EMA alignment,
+    // so only truly strong directional trends block the contrarian signal.
+    const bias4h = indicators["4h"]?.trend?.bias || "neutral";
     const signals = [];
 
-    // BUY: RSI oversold. Skip if price is far below EMA200 in a confirmed death cross
-    // (avoid catching falling knives in a strong structural downtrend).
+    // BUY: RSI oversold. Block only when the 4h timeframe is in a confirmed
+    // structural bearish trend (not just any short-term pullback).
     if (rsi < 30) {
-      const strongBearish = trend?.deathCross && !trend?.priceAboveEma200;
-      if (!strongBearish) {
+      if (bias4h !== "bearish") {
         signals.push({
           pair,
           side: "BUY",
@@ -26,17 +27,17 @@ module.exports = {
           metadata: {
             strategy: "mean_reversion",
             strategyId: "mean_reversion",
-            trigger: `RSI oversold (${rsi.toFixed(1)})`
+            trigger: `RSI oversold (${rsi.toFixed(1)})`,
+            bias4h
           }
         });
       }
     }
 
-    // SELL: RSI overbought. Skip if in a confirmed golden cross above EMA200
-    // (avoid shorting a strong structural uptrend).
+    // SELL: RSI overbought. Block only when the 4h timeframe is in a confirmed
+    // structural bullish trend (not just any short-term rally).
     if (rsi > 70) {
-      const strongBullish = trend?.goldenCross && trend?.priceAboveEma200;
-      if (!strongBullish) {
+      if (bias4h !== "bullish") {
         signals.push({
           pair,
           side: "SELL",
@@ -44,7 +45,8 @@ module.exports = {
           metadata: {
             strategy: "mean_reversion",
             strategyId: "mean_reversion",
-            trigger: `RSI overbought (${rsi.toFixed(1)})`
+            trigger: `RSI overbought (${rsi.toFixed(1)})`,
+            bias4h
           }
         });
       }

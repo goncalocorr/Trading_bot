@@ -132,10 +132,19 @@ class ReporterService {
     };
   }
 
+  queryWithTimeout(sql, params = {}, timeoutMs = 30000) {
+    return Promise.race([
+      db.query(sql, params),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Reporter query timed out after ${timeoutMs}ms`)), timeoutMs)
+      )
+    ]);
+  }
+
   async getClosedTradesForPeriod(type, referenceDate = new Date()) {
     const bounds = getUtcPeriodBounds(type, referenceDate);
 
-    const trades = await db.query(
+    const trades = await this.queryWithTimeout(
       `SELECT *
        FROM trades
        WHERE status IN ('closed', 'cancelled')
@@ -147,7 +156,7 @@ class ReporterService {
       }
     );
 
-    const capitalRows = await db.query(
+    const capitalRows = await this.queryWithTimeout(
       `SELECT capital_value, realized_profit, unrealized_pnl, timestamp
        FROM capital_history
        WHERE timestamp BETWEEN :start AND :end

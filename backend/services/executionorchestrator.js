@@ -1,3 +1,5 @@
+const db = require("../models/db");
+
 function getAverageExecutionPrice(order, fallbackPrice) {
   const executedQty = Number(order.executedQty || 0);
   const cumulativeQuoteQty = Number(order.cummulativeQuoteQty || 0);
@@ -148,21 +150,59 @@ class ExecutionOrchestrator {
 
   async finalizeTradeClosure(trade, { exitPrice, closedAt = new Date(), cancelReason, status = "closed", metadata = {} }) {
     const result = this.riskManager.calculateTradeResult({
-      side: "BUY",
+      side: trade.side || "BUY",
       entryPrice: trade.entry_price,
       exitPrice,
       quantity: trade.quantity
     });
+    const durationSeconds = calculateDurationSeconds(trade.opened_at, closedAt);
 
-    const updatedTrade = await this.tradeModel.updateTradeClosure(trade.id, {
-      exitPrice,
-      status,
-      resultPnl: result.pnl,
-      resultPercent: result.resultPercent,
-      cancelReason,
-      closedAt,
-      durationSeconds: calculateDurationSeconds(trade.opened_at, closedAt)
+    // Compute capital update before the transaction (pure arithmetic, no DB write).
+    const capitalState = await this.riskManager.getLatestCapitalState();
+    const capitalUpdate = this.riskManager.applyCompoundProfit({
+      currentCapital: capitalState.capitalValue,
+      currentRealizedProfit: capitalState.realizedProfit,
+      tradePnl: result.pnl
     });
+
+    // Atomically close the trade and record the capital change so a crash between
+    // the two writes cannot leave the DB in an inconsistent state.
+    await db.withTransaction(async (conn) => {
+      await conn.execute(
+        `UPDATE trades
+         SET exit_price        = :exitPrice,
+             status            = :status,
+             result_pnl        = :resultPnl,
+             result_percent    = :resultPercent,
+             closed_at         = :closedAt,
+             duration_seconds  = :durationSeconds,
+             cancel_reason     = :cancelReason,
+             updated_at        = CURRENT_TIMESTAMP
+         WHERE id = :id`,
+        {
+          id: trade.id,
+          exitPrice,
+          status,
+          resultPnl: result.pnl,
+          resultPercent: result.resultPercent,
+          closedAt,
+          durationSeconds,
+          cancelReason: cancelReason || null
+        }
+      );
+      await conn.execute(
+        `INSERT INTO capital_history (timestamp, capital_value, realized_profit, unrealized_pnl)
+         VALUES (:timestamp, :capitalValue, :realizedProfit, :unrealizedPnl)`,
+        {
+          timestamp: closedAt,
+          capitalValue: capitalUpdate.newCapital,
+          realizedProfit: capitalUpdate.newRealizedProfit,
+          unrealizedPnl: 0
+        }
+      );
+    });
+
+    const updatedTrade = await this.tradeModel.getTradeById(trade.id);
 
     await this.settleTrackedOrders(
       trade.id,
@@ -173,19 +213,6 @@ class ExecutionOrchestrator {
       },
       ["protection", "adjustment"]
     );
-
-    const capitalState = await this.riskManager.getLatestCapitalState();
-    const capitalUpdate = this.riskManager.applyCompoundProfit({
-      currentCapital: capitalState.capitalValue,
-      currentRealizedProfit: capitalState.realizedProfit,
-      tradePnl: result.pnl
-    });
-
-    await this.riskManager.recordCapitalSnapshot({
-      capitalValue: capitalUpdate.newCapital,
-      realizedProfit: capitalUpdate.newRealizedProfit,
-      unrealizedPnl: 0
-    });
 
     await this.telegramService.notifyTradeClosed({
       pair: updatedTrade.pair,

@@ -24,19 +24,25 @@ class PaperBroker {
     this.orders = new Map();
     this.orderLists = new Map();
     this.tradeHistory = [];
-    // Populated by init() after the DB is ready.
-    this._initialized = false;
+    // Promise-based singleton: concurrent calls to init() share the same promise
+    // instead of racing through the _initialized flag check.
+    this._initPromise = null;
   }
 
   /**
    * Must be called once after the database is ready (called from startServer).
    * Loads state from MySQL, falling back to the legacy JSON file for migration.
+   * Safe to call multiple times — subsequent calls return the same promise.
    */
   async init() {
-    if (this._initialized) {
-      return;
+    if (!this._initPromise) {
+      this._initPromise = this._doInit();
     }
 
+    return this._initPromise;
+  }
+
+  async _doInit() {
     try {
       const saved = await RuntimeStateModel.getValue(STATE_KEY);
 
@@ -53,8 +59,6 @@ class PaperBroker {
       console.warn(`Paper broker MySQL init failed, falling back to JSON: ${error.message}`);
       this._tryLoadLegacyJson();
     }
-
-    this._initialized = true;
   }
 
   _hasAnyState() {

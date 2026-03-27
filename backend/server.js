@@ -1179,7 +1179,14 @@ async function startServer() {
   runtime.startupStatus = await startupGuard.run();
   await persistRuntimeState();
 
+  // Notify Telegram if there are open trades from a previous session.
+  const openTradesAtStartup = await TradeModel.getOpenTrades();
+  if (openTradesAtStartup.length > 0) {
+    await telegramService.notifyStartupWithOpenTrades(openTradesAtStartup);
+  }
+
   cron.schedule("*/5 * * * *", async () => {
+    await circuitBreaker.checkAutoReset();
     await autonomousOperator.runAutonomousLoop();
   });
 
@@ -1257,6 +1264,36 @@ async function startServer() {
     });
   });
 }
+
+async function gracefulShutdown(signal) {
+  logger.info("graceful_shutdown_started", { signal });
+
+  try {
+    const openTrades = await TradeModel.getOpenTrades();
+
+    if (openTrades.length > 0) {
+      logger.warn("graceful_shutdown_open_trades", { count: openTrades.length });
+
+      for (const trade of openTrades) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await executionOrchestrator.closeTrade(trade.id, "server_shutdown", { signal });
+          logger.info("graceful_shutdown_trade_closed", { tradeId: trade.id, pair: trade.pair });
+        } catch (err) {
+          logger.error("graceful_shutdown_trade_close_failed", { tradeId: trade.id, message: err.message });
+        }
+      }
+    }
+  } catch (err) {
+    logger.error("graceful_shutdown_error", { message: err.message });
+  }
+
+  logger.info("graceful_shutdown_complete", { signal });
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 startServer().catch((error) => {
   logger.error("backend_start_failed", {

@@ -170,19 +170,27 @@ class SentimentService {
       const response = await this.http.get(url);
       const results = Array.isArray(response.data?.results) ? response.data.results : [];
 
-      return results.map((item) => {
-        const headline = item.title || "";
-        const score = this.scoreHeadline(headline);
+      const seen = new Set();
+      return results
+        .map((item) => {
+          const headline = item.title || "";
+          const score = this.scoreHeadline(headline);
 
-        return {
-          title: headline,
-          url: item.url || null,
-          publishedAt: item.published_at || null,
-          score,
-          sentiment: this.classifyHeadline(score),
-          source: item.source?.title || "CryptoPanic"
-        };
-      });
+          return {
+            title: headline,
+            url: item.url || null,
+            publishedAt: item.published_at || null,
+            score,
+            sentiment: this.classifyHeadline(score),
+            source: item.source?.title || "CryptoPanic"
+          };
+        })
+        .filter((item) => {
+          const key = item.title.toLowerCase().trim().slice(0, 80);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
     } catch (error) {
       return [
         {
@@ -192,6 +200,7 @@ class SentimentService {
           score: 0,
           sentiment: "neutral",
           source: "fallback",
+          unavailable: true,
           error: error.message
         }
       ];
@@ -199,6 +208,7 @@ class SentimentService {
   }
 
   summarizeNews(newsItems = []) {
+    const isUnavailable = newsItems.length === 1 && Boolean(newsItems[0]?.unavailable);
     const totalScore = newsItems.reduce((sum, item) => sum + Number(item.score || 0), 0);
     const negativeCount = newsItems.filter((item) => item.sentiment === "negative").length;
     const positiveCount = newsItems.filter((item) => item.sentiment === "positive").length;
@@ -210,8 +220,9 @@ class SentimentService {
       positiveCount,
       negativeCount,
       overallSentiment,
-      heavilyNegative: totalScore <= -2 || negativeCount >= Math.ceil(newsItems.length / 2),
-      neutralOrPositive: totalScore >= 0
+      isUnavailable,
+      heavilyNegative: !isUnavailable && (totalScore <= -2 || negativeCount >= Math.ceil(newsItems.length / 2)),
+      neutralOrPositive: !isUnavailable && totalScore >= 0
     };
   }
 

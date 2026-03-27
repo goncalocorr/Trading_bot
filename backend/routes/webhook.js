@@ -31,7 +31,7 @@ module.exports = function createWebhookRouter(context) {
 
       try {
         const result = await context.processSignal({
-          pair: req.body.pair || context.runtime.tradingPairs[0],
+          pair: req.body.pair || context.runtime.tradingPairs?.[0] || "BTCUSDT",
           side: req.body.side,
           triggerSource: "webhook",
           metadata: req.body.metadata || {}

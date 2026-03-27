@@ -85,8 +85,17 @@ class MacroEventsService {
       .filter((event) => event.time instanceof Date && !Number.isNaN(event.time.getTime()));
   }
 
-  filterRelevantEvents(events = []) {
-    return events.filter((event) => this.isHighImpact(event) && this.isRelevantEventName(event.title));
+  filterRelevantEvents(events = [], referenceDate = new Date()) {
+    const cutoffPast = new Date(referenceDate.getTime() - 60 * 60 * 1000); // 1h in the past
+    const cutoffFuture = new Date(referenceDate.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days ahead
+
+    return events.filter(
+      (event) =>
+        this.isHighImpact(event) &&
+        this.isRelevantEventName(event.title) &&
+        event.time >= cutoffPast &&
+        event.time <= cutoffFuture
+    );
   }
 
   buildPauseWindow(event) {
@@ -151,7 +160,7 @@ class MacroEventsService {
   async evaluateMacroPause(referenceDate = new Date()) {
     try {
       const events = await this.fetchWeeklyEvents();
-      const relevantEvents = this.filterRelevantEvents(events);
+      const relevantEvents = this.filterRelevantEvents(events, referenceDate);
 
       return {
         ok: true,

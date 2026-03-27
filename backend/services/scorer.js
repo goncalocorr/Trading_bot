@@ -20,7 +20,9 @@ function evaluateRsi(signalSide, indicatorSnapshot, signalTimeframe = "15m", str
     // mean_reversion fires exactly when RSI is extreme — reward it
     confirms = (normalizedSide === "BUY" && rsi < 35) || (normalizedSide === "SELL" && rsi > 65);
   } else {
-    // pullback_continuation and others: RSI should be in the pullback/distribution zone
+    // pullback_continuation and others: RSI should be in the pullback/distribution zone.
+    // Symmetric ranges: BUY [30-65] and SELL [35-70] → both 35-wide, centred on 47/52.
+    // BUY ceiling 65 avoids chasing overbought entries; SELL floor 35 avoids selling deeply oversold.
     confirms = (normalizedSide === "BUY" && rsi >= 30 && rsi <= 65) || (normalizedSide === "SELL" && rsi >= 35 && rsi <= 70);
   }
 

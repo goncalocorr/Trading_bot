@@ -24,8 +24,8 @@ class StrategyHealthMonitor {
   async monitor() {
     const { lookback, minWinRate, minPnl } = this.getConfig();
     const [closedTrades, cancelledTrades] = await Promise.all([
-      this.tradeModel.listTrades({ status: "closed", limit: 200 }),
-      this.tradeModel.listTrades({ status: "cancelled", limit: 200 })
+      this.tradeModel.listTrades({ status: "closed", limit: 500 }),
+      this.tradeModel.listTrades({ status: "cancelled", limit: 500 })
     ]);
     const trades = [...closedTrades, ...cancelledTrades].sort(
       (left, right) => new Date(right.closed_at || right.opened_at) - new Date(left.closed_at || left.opened_at)

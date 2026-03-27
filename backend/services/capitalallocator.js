@@ -46,9 +46,9 @@ class CapitalAllocator {
       riskMultiplier: Number(profile.riskMultiplier || 1),
       maxExposureRatio: Number(profile.maxExposureRatio || 1),
       baseRiskPerTrade: Number(runtimeRiskPerTrade || 0),
-      effectiveRiskPerTrade: Math.max(
-        0.001,
-        Number(runtimeRiskPerTrade || 0) * Number(profile.riskMultiplier || 1)
+      effectiveRiskPerTrade: Math.min(
+        0.05,
+        Math.max(0.001, Number(runtimeRiskPerTrade || 0) * Number(profile.riskMultiplier || 1))
       ),
       availableCapital: normalizedAvailableCapital,
       reservedCapital: normalizedReservedCapital,

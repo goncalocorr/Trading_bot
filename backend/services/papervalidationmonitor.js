@@ -53,7 +53,7 @@ class PaperValidationMonitor {
       return;
     }
 
-    const alertKey = `demoted:${champion.runId}:${performance.tradeCount}:${Number(performance.pnlTotal || 0).toFixed(4)}`;
+    const alertKey = `demoted:${champion.runId}:${Number(performance.winRate || 0).toFixed(1)}:${Number(performance.pnlTotal || 0).toFixed(2)}`;
 
     if (this.runtime.paperValidationAlertKey === alertKey) {
       return;

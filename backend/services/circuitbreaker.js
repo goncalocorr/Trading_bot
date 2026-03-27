@@ -96,6 +96,45 @@ class CircuitBreakerService {
     const counterKey = type === "exchange" ? "exchangeFailures" : "executionFailures";
     return this.resetCounter(counterKey);
   }
+
+  async checkAutoReset() {
+    const autoResetMinutes = Number(process.env.CIRCUIT_BREAKER_AUTO_RESET_MINUTES || 30);
+
+    if (this.runtime.botEnabled || autoResetMinutes <= 0) {
+      return { reset: false };
+    }
+
+    const lastTriggeredAt = this.runtime.circuitBreakers?.lastTriggeredAt;
+
+    if (!lastTriggeredAt) {
+      return { reset: false };
+    }
+
+    const elapsedMinutes = (Date.now() - new Date(lastTriggeredAt).getTime()) / 60000;
+
+    if (elapsedMinutes < autoResetMinutes) {
+      return { reset: false, remainingMinutes: Math.ceil(autoResetMinutes - elapsedMinutes) };
+    }
+
+    this.runtime.botEnabled = true;
+    this.runtime.autoPauseReason = null;
+    this.resetAll();
+
+    this.logger?.info("circuit_breaker_auto_reset", {
+      elapsedMinutes: Math.round(elapsedMinutes),
+      autoResetMinutes
+    });
+
+    if (this.telegramService?.sendMessage) {
+      const locale = this.runtime?.notificationLocale || "en";
+      const msg = locale === "pt-PT"
+        ? `\u26A1 Circuit breaker resetado automaticamente apos ${Math.round(elapsedMinutes)} min. Bot reativado.`
+        : `\u26A1 Circuit breaker auto-reset after ${Math.round(elapsedMinutes)} min. Bot reactivated.`;
+      await this.telegramService.sendMessage(msg);
+    }
+
+    return { reset: true, elapsedMinutes: Math.round(elapsedMinutes) };
+  }
 }
 
 module.exports = CircuitBreakerService;
