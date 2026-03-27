@@ -58,7 +58,7 @@ function evaluateEmaTrend(signalSide, indicatorSnapshot, signalTimeframe = "15m"
       ? "EMA structure not hostile to mean reversion"
       : "EMA trend confirms signal direction",
     points,
-    maxPoints: 2,
+    maxPoints: isMeanReversion ? 1 : 2,
     passed: confirms,
     details: {
       signalSide: normalizedSide,
@@ -92,7 +92,7 @@ function evaluateMultiTimeframe(signalSide, indicatorSnapshot, strategyId = "") 
       ? "Higher timeframes not strongly hostile"
       : "Multi-timeframe alignment (1H + 4H)",
     points,
-    maxPoints: 2,
+    maxPoints: isMeanReversion ? 1 : 2,
     passed: points > 0,
     partial: partialAlignment,
     details: multiTimeframe || {
@@ -262,7 +262,8 @@ function computeScoreBreakdown({
     if (normalizedSignalSide === "SELL" && rsi15m < 30) signalPenalty -= 1;
   }
 
-  const totalScore = Math.max(0, Math.min(MAX_SCORE, baseScore + newsScoreAdjustment + signalPenalty));
+  const effectiveMaxScore = breakdownItems.reduce((sum, item) => sum + item.maxPoints, 0);
+  const totalScore = Math.max(0, Math.min(effectiveMaxScore, baseScore + newsScoreAdjustment + signalPenalty));
   const decision = buildDecision(totalScore, executionThreshold);
   const executionMode = binanceService.getExecutionMode(totalScore);
   const blockingReasons = breakdownItems.filter((item) => !item.passed).map((item) => item.label);
@@ -273,7 +274,7 @@ function computeScoreBreakdown({
     adjustments: {
       newsScoreAdjustment
     },
-    maxScore: MAX_SCORE,
+    maxScore: effectiveMaxScore,
     decision,
     executionMode,
     reason: buildReason(decision, totalScore),
