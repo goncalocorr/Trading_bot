@@ -1,9 +1,5 @@
 const logger = require("./logger");
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 class StrategyRunner {
   constructor({
     runtime,
@@ -25,8 +21,10 @@ class StrategyRunner {
       ? this.strategyRegistry.getStrategies(options.strategyIds)
       : this.strategyRegistry.getActiveStrategies();
     const results = [];
+    const processedSides = new Set();
 
     for (const strategy of strategies) {
+      // eslint-disable-next-line no-await-in-loop
       const candidates = await strategy.scan({
         pair,
         candlesByTimeframe,
@@ -34,6 +32,26 @@ class StrategyRunner {
       });
 
       for (const candidate of candidates) {
+        const deduplicationKey = `${candidate.pair}:${candidate.side}`;
+
+        if (processedSides.has(deduplicationKey)) {
+          logger.info("signal_deduplicated", {
+            pair: candidate.pair,
+            side: candidate.side,
+            skippedStrategy: strategy.id
+          });
+          results.push({
+            strategyId: strategy.id,
+            strategyDescription: strategy.description,
+            pair: candidate.pair,
+            side: candidate.side,
+            result: { ok: false, action: "deduplicated", reason: "Signal already processed for this pair and side." }
+          });
+          continue;
+        }
+
+        processedSides.add(deduplicationKey);
+
         // eslint-disable-next-line no-await-in-loop
         const result = await this.processSignal({
           pair: candidate.pair,
@@ -64,27 +82,33 @@ class StrategyRunner {
       return [];
     }
 
+    const concurrency = Number(process.env.AUTO_SCAN_CONCURRENCY || 3);
+    const pairs = [...this.runtime.tradingPairs];
     const summary = [];
 
-    for (const pair of this.runtime.tradingPairs) {
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        const pairResults = await this.scanPair(pair, options);
-        summary.push({
-          pair,
-          results: pairResults
-        });
-      } catch (error) {
-        logger.error(`Auto scan failed for ${pair}: ${error.message}`);
-        summary.push({
-          pair,
-          error: error.message,
+    // Process pairs in parallel batches
+    for (let i = 0; i < pairs.length; i += concurrency) {
+      const batch = pairs.slice(i, i + concurrency);
+      // eslint-disable-next-line no-await-in-loop
+      const batchResults = await Promise.allSettled(
+        batch.map((pair) =>
+          this.scanPair(pair, options).then(
+            (results) => ({ pair, results }),
+            (error) => {
+              logger.error(`Auto scan failed for ${pair}: ${error.message}`);
+              return { pair, error: error.message, results: [] };
+            }
+          )
+        )
+      );
+
+      for (const result of batchResults) {
+        summary.push(result.status === "fulfilled" ? result.value : {
+          pair: "unknown",
+          error: result.reason?.message || "Unknown error",
           results: []
         });
       }
-
-      // eslint-disable-next-line no-await-in-loop
-      await sleep(500);
     }
 
     return summary;

@@ -5,32 +5,26 @@ services:
     image: mysql:8.4
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: tradingbot
-      MYSQL_USER: tradingbot
-      MYSQL_PASSWORD: tradingbot
-    ports:
-      - "3306:3306"
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${DB_NAME:-tradingbot}
+      MYSQL_USER: ${DB_USER:-tradingbot}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    # MySQL only accessible from other containers, not from the host/internet.
+    expose:
+      - "3306"
     volumes:
       - mysql_data:/var/lib/mysql
+      - mysql_backups:/backups
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-prootpassword"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 15s
       timeout: 5s
       retries: 10
       start_period: 20s
-
-  phpmyadmin:
-    image: phpmyadmin:5.2-apache
-    restart: unless-stopped
-    depends_on:
-      mysql:
-        condition: service_healthy
-    environment:
-      PMA_HOST: mysql
-      PMA_PORT: 3306
-    ports:
-      - "8080:80"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   backend:
     build:
@@ -45,14 +39,20 @@ services:
     environment:
       DB_HOST: mysql
       DB_PORT: 3306
-    ports:
-      - "3000:3000"
+      NODE_ENV: production
+    # Backend only accessible via nginx, not from the host/internet.
+    expose:
+      - "3000"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 20s
       timeout: 8s
       retries: 5
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   frontend:
     build:
@@ -64,12 +64,57 @@ services:
         condition: service_healthy
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost/health"]
       interval: 20s
       timeout: 8s
       retries: 5
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # Let's Encrypt certificate renewal. Runs every 12h.
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'"
+    depends_on:
+      - frontend
+
+  # Automated MySQL backup every 6 hours.
+  db-backup:
+    image: mysql:8.4
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_PWD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql_backups:/backups
+    entrypoint: >
+      /bin/sh -c '
+      while true; do
+        TIMESTAMP=$$(date +%Y%m%d_%H%M%S);
+        mysqldump -h mysql -u root --single-transaction --routines ${DB_NAME:-tradingbot}
+          > /backups/tradingbot_$$TIMESTAMP.sql;
+        find /backups -name "tradingbot_*.sql" -mtime +7 -delete;
+        echo "[$$TIMESTAMP] Backup completed, old backups cleaned.";
+        sleep 21600;
+      done'
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
 volumes:
   mysql_data:
+  mysql_backups:

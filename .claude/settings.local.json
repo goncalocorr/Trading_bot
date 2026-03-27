@@ -16,7 +16,15 @@
       "Bash(git push:*)",
       "Bash(xargs grep:*)",
       "Bash(node -e \"require\\(''''./scripts/sync_runtime_from_env.js''''\\)\")",
-      "Bash(node -e \"require\\(''''./scripts/compare_pairs.js''''\\)\" --check)"
+      "Bash(node -e \"require\\(''''./scripts/compare_pairs.js''''\\)\" --check)",
+      "Bash(grep -E \"\\\\.\\(ts|js|json\\)$\")",
+      "Bash(grep -E \"\\\\.\\(js|ts\\)$\")",
+      "Bash(grep -r \"RISK_PER_TRADE\\\\|DRAWDOWN\\\\|MAX_OPEN\\\\|CAPITAL\" /c/Users/saloc/Documents/trading-bot/backend/services/*.js)",
+      "Bash(grep \"\\\\.js$\")",
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(find /c/Users/saloc/Documents/trading-bot -name .env* -o -name *.env)"
     ]
-  }
+  },
+  "model": "opus"
 }

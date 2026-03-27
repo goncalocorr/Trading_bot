@@ -59,12 +59,35 @@ class RiskManager {
     };
   }
 
-  calculateExitLevels({ side, entryPrice, atr }) {
+  getStrategyExitConfig(strategyId = "") {
+    const configs = {
+      mean_reversion: {
+        stopMultiplier: Number(process.env.EXIT_MEAN_REVERSION_STOP_ATR || 1.0),
+        takeProfitMultiplier: Number(process.env.EXIT_MEAN_REVERSION_TP_ATR || 2.0)
+      },
+      pullback_continuation: {
+        stopMultiplier: Number(process.env.EXIT_PULLBACK_STOP_ATR || 1.5),
+        takeProfitMultiplier: Number(process.env.EXIT_PULLBACK_TP_ATR || 3.5)
+      },
+      multi_timeframe_rsi: {
+        stopMultiplier: Number(process.env.EXIT_MTF_RSI_STOP_ATR || 1.5),
+        takeProfitMultiplier: Number(process.env.EXIT_MTF_RSI_TP_ATR || 3.0)
+      }
+    };
+
+    return configs[strategyId] || {
+      stopMultiplier: Number(process.env.EXIT_DEFAULT_STOP_ATR || 1.5),
+      takeProfitMultiplier: Number(process.env.EXIT_DEFAULT_TP_ATR || 3.0)
+    };
+  }
+
+  calculateExitLevels({ side, entryPrice, atr, strategyId = "" }) {
     const normalizedSide = String(side || "").toUpperCase();
     const numericEntry = Number(entryPrice);
     const numericAtr = Number(atr);
-    const stopDistance = numericAtr * 1.5;
-    const takeProfitDistance = numericAtr * 3;
+    const exitConfig = this.getStrategyExitConfig(strategyId);
+    const stopDistance = numericAtr * exitConfig.stopMultiplier;
+    const takeProfitDistance = numericAtr * exitConfig.takeProfitMultiplier;
 
     if (!Number.isFinite(numericEntry) || !Number.isFinite(numericAtr) || numericAtr <= 0) {
       throw new Error("Invalid entry price or ATR for risk calculation.");
@@ -92,14 +115,17 @@ class RiskManager {
     entryPrice,
     atr,
     side = "BUY",
-    riskPerTrade = this.getConfig().riskPerTrade
+    riskPerTrade = this.getConfig().riskPerTrade,
+    strategyId = ""
   }) {
     const numericCapital = Number(capital);
     const numericEntryPrice = Number(entryPrice);
-    const exits = this.calculateExitLevels({ side, entryPrice, atr });
+    const exits = this.calculateExitLevels({ side, entryPrice, atr, strategyId });
+    const slippageBuffer = Number(process.env.SLIPPAGE_BUFFER_PERCENT || 0.1) / 100;
+    const adjustedEntryPrice = numericEntryPrice * (1 + slippageBuffer);
     const riskAmount = numericCapital * Number(riskPerTrade);
     const riskSizedQuantity = riskAmount / exits.stopDistance;
-    const maxAffordableQuantity = numericEntryPrice > 0 ? numericCapital / numericEntryPrice : 0;
+    const maxAffordableQuantity = adjustedEntryPrice > 0 ? numericCapital / adjustedEntryPrice : 0;
     const quantity = Math.max(0, Math.min(riskSizedQuantity, maxAffordableQuantity));
     const positionNotional = quantity * numericEntryPrice;
     const effectiveRiskAmount = quantity * exits.stopDistance;
@@ -299,13 +325,46 @@ class RiskManager {
     ));
   }
 
+  async getUnrealizedPnl() {
+    const openTrades = await db.query(
+      `SELECT side, entry_price, quantity, pair FROM trades WHERE status = 'open'`
+    );
+
+    let unrealizedPnl = 0;
+
+    for (const trade of openTrades) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const ticker = await require("./binance").getSymbolPrice(trade.pair);
+        const currentPrice = Number(ticker.price || 0);
+        const entryPrice = Number(trade.entry_price);
+        const quantity = Number(trade.quantity);
+        const side = String(trade.side || "").toUpperCase();
+
+        if (side === "BUY") {
+          unrealizedPnl += (currentPrice - entryPrice) * quantity;
+        } else {
+          unrealizedPnl += (entryPrice - currentPrice) * quantity;
+        }
+      } catch (_error) {
+        // Skip if price fetch fails — use conservative estimate (0)
+      }
+    }
+
+    return unrealizedPnl;
+  }
+
   async evaluateDailyDrawdown(referenceDate = new Date()) {
     const capitalState = await this.getLatestCapitalState();
-    const dailyPnl = await this.getDailyPnl(referenceDate);
+    const [dailyPnl, unrealizedPnl] = await Promise.all([
+      this.getDailyPnl(referenceDate),
+      this.getUnrealizedPnl()
+    ]);
     const { dailyDrawdownLimit } = this.getConfig();
 
     const capitalBase = Number(capitalState.capitalValue || 0);
-    const drawdownValue = Math.max(0, Number(dailyPnl.pnl) * -1);
+    const totalPnl = Number(dailyPnl.pnl) + Math.min(0, unrealizedPnl);
+    const drawdownValue = Math.max(0, totalPnl * -1);
     const thresholdValue = capitalBase * dailyDrawdownLimit;
     const limitHit = drawdownValue >= thresholdValue && thresholdValue > 0;
 
@@ -324,6 +383,8 @@ class RiskManager {
       thresholdValue,
       resumeAt: this.state.resumeAt,
       dailyPnl: dailyPnl.pnl,
+      unrealizedPnl,
+      totalPnl,
       tradeCount: dailyPnl.tradeCount
     };
   }
@@ -471,7 +532,7 @@ class RiskManager {
     };
   }
 
-  async buildTradeRiskPlan({ side, entryPrice, atr, pair, riskPerTradeOverride }) {
+  async buildTradeRiskPlan({ side, entryPrice, atr, pair, riskPerTradeOverride, strategyId = "" }) {
     const [capitalState, pairCooldown] = await Promise.all([
       this.getAvailableCapitalState(),
       this.evaluatePairCooldown(pair)
@@ -481,9 +542,10 @@ class RiskManager {
       entryPrice,
       atr,
       side,
-      riskPerTrade: riskPerTradeOverride ?? this.getConfig().riskPerTrade
+      riskPerTrade: riskPerTradeOverride ?? this.getConfig().riskPerTrade,
+      strategyId
     });
-    const exits = this.calculateExitLevels({ side, entryPrice, atr });
+    const exits = this.calculateExitLevels({ side, entryPrice, atr, strategyId });
 
     return {
       capitalState,

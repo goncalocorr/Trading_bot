@@ -1,4 +1,17 @@
+const crypto = require("crypto");
 const db = require("../models/db");
+
+function parseBooleanEnv(value, defaultValue = false) {
+  if (value === undefined || value === null || value === "") {
+    return defaultValue;
+  }
+  return String(value).toLowerCase() === "true";
+}
+
+function generateOrderId(prefix) {
+  const uid = crypto.randomBytes(8).toString("hex");
+  return `${prefix}-${uid}`;
+}
 
 function getAverageExecutionPrice(order, fallbackPrice) {
   const executedQty = Number(order.executedQty || 0);
@@ -271,7 +284,7 @@ class ExecutionOrchestrator {
         symbol: pair,
         side: "BUY",
         quantity: riskPlan.positionSizing.quantity,
-        newClientOrderId: `buy-${Date.now()}`
+        newClientOrderId: generateOrderId("buy")
       });
     } else {
       entryOrder = await this.executionEngine.placeLimitOrder({
@@ -279,7 +292,7 @@ class ExecutionOrchestrator {
         side: "BUY",
         quantity: riskPlan.positionSizing.quantity,
         price: entryReferencePrice,
-        newClientOrderId: `limit-buy-${Date.now()}`
+        newClientOrderId: generateOrderId("limit-buy")
       });
 
       const finalOrderState = await this.executionEngine.waitForOrderFill(pair, entryOrder.orderId, {
@@ -304,48 +317,67 @@ class ExecutionOrchestrator {
 
     const executedQuantity = Number(entryOrder.executedQty || riskPlan.positionSizing.quantity);
     const entryPrice = getAverageExecutionPrice(entryOrder, entryReferencePrice);
+    const strategyId = metadata?.strategyId || metadata?.strategy || "";
     const exits = this.riskManager.calculateExitLevels({
       side: "BUY",
       entryPrice,
-      atr
+      atr,
+      strategyId
     });
     const breakEvenTriggerPrice = entryPrice + exits.stopDistance;
 
     let ocoOrder = null;
+    const maxOcoRetries = 3;
 
-    try {
-      ocoOrder = await this.executionEngine.placeOcoOrder({
-        symbol: pair,
-        side: "SELL",
-        quantity: executedQuantity,
-        price: exits.takeProfit,
-        stopPrice: exits.stopLoss,
-        stopLimitPrice: getOcoStopLimitPrice(exits.stopLoss),
-        listClientOrderId: `oco-${Date.now()}`
-      });
-    } catch (error) {
-      ocoOrder = {
-        error: error.message
-      };
+    for (let attempt = 1; attempt <= maxOcoRetries; attempt++) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        ocoOrder = await this.executionEngine.placeOcoOrder({
+          symbol: pair,
+          side: "SELL",
+          quantity: executedQuantity,
+          price: exits.takeProfit,
+          stopPrice: exits.stopLoss,
+          stopLimitPrice: getOcoStopLimitPrice(exits.stopLoss),
+          listClientOrderId: generateOrderId(`oco-r${attempt}`)
+        });
+        break;
+      } catch (error) {
+        this.logger?.warn("buy_trade_oco_attempt_failed", {
+          pair,
+          triggerSource,
+          attempt,
+          maxRetries: maxOcoRetries,
+          message: error.message
+        });
+
+        if (attempt < maxOcoRetries) {
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+        } else {
+          ocoOrder = { error: error.message };
+        }
+      }
     }
 
     if (ocoOrder?.error) {
-      this.logger?.error("buy_trade_oco_failed", {
+      this.logger?.error("buy_trade_oco_failed_all_retries", {
         pair,
         triggerSource,
-        message: ocoOrder.error
+        message: ocoOrder.error,
+        retriesExhausted: maxOcoRetries
       });
       const emergencyCloseOrder = await this.executionEngine.closeSpotPositionAtMarket({
         symbol: pair,
         side: "SELL",
         quantity: executedQuantity,
-        newClientOrderId: `emergency-close-${Date.now()}`
+        newClientOrderId: generateOrderId("emergency-close")
       });
 
       return {
         ok: false,
         action: "oco_protection_failed",
-        reason: `OCO protection failed and the position was closed immediately: ${ocoOrder.error}`,
+        reason: `OCO protection failed after ${maxOcoRetries} retries, position closed: ${ocoOrder.error}`,
         entryOrder,
         emergencyCloseOrder
       };
@@ -510,7 +542,7 @@ class ExecutionOrchestrator {
       symbol: trade.pair,
       side: "SELL",
       quantity: trade.quantity,
-      newClientOrderId: `close-${Date.now()}`
+      newClientOrderId: generateOrderId("close")
     });
 
     const exitPrice = getAverageExecutionPrice(closeOrder, trade.entry_price);
@@ -566,7 +598,7 @@ class ExecutionOrchestrator {
         price: trade.take_profit,
         stopPrice: trade.entry_price,
         stopLimitPrice: getOcoStopLimitPrice(trade.entry_price),
-        listClientOrderId: `breakeven-oco-${Date.now()}`
+        listClientOrderId: generateOrderId("breakeven-oco")
       });
 
       await this.tradeModel.updateTradeProtection(trade.id, {
@@ -636,7 +668,7 @@ class ExecutionOrchestrator {
         price: trade.take_profit,
         stopPrice: newStopLoss,
         stopLimitPrice: getOcoStopLimitPrice(newStopLoss),
-        listClientOrderId: `trail-oco-${Date.now()}`
+        listClientOrderId: generateOrderId("trail-oco")
       });
 
       await this.tradeModel.updateTradeProtection(trade.id, {

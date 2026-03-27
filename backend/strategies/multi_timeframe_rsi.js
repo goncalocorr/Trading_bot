@@ -6,9 +6,11 @@ module.exports = {
     const indicators = indicatorsService.buildIndicatorSnapshot(candlesByTimeframe);
     const highTimeframeDirection = indicators.multiTimeframe.direction;
     const rsi = Number(indicators["15m"]?.rsi14 || 0);
+    const buyThreshold = Number(process.env.MTF_RSI_BUY_THRESHOLD || 35);
+    const sellThreshold = Number(process.env.MTF_RSI_SELL_THRESHOLD || 65);
     const signals = [];
 
-    if (highTimeframeDirection === "BUY" && rsi < 35) {
+    if (highTimeframeDirection === "BUY" && rsi < buyThreshold) {
       signals.push({
         pair,
         side: "BUY",
@@ -20,7 +22,7 @@ module.exports = {
       });
     }
 
-    if (highTimeframeDirection === "SELL" && rsi > 65) {
+    if (highTimeframeDirection === "SELL" && rsi > sellThreshold) {
       signals.push({
         pair,
         side: "SELL",

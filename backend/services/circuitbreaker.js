@@ -65,30 +65,55 @@ class CircuitBreakerService {
     };
   }
 
+  isTransientError(error) {
+    const message = String(error?.message || "").toLowerCase();
+    const status = Number(error?.status || 0);
+    return (
+      status === 429 ||
+      status === 503 ||
+      status === 502 ||
+      message.includes("timeout") ||
+      message.includes("econnreset") ||
+      message.includes("econnrefused") ||
+      message.includes("no response received")
+    );
+  }
+
   async recordFailure(type, error, metadata = {}) {
     const thresholds = this.getThresholds();
     const counterKey = type === "exchange" ? "exchangeFailures" : "executionFailures";
     const maxKey = type === "exchange" ? "maxExchangeFailures" : "maxExecutionFailures";
+    const isTransient = this.isTransientError(error);
+
+    // Transient errors require more failures before tripping
+    const effectiveThreshold = isTransient
+      ? Number(thresholds[maxKey]) * 2
+      : Number(thresholds[maxKey]);
+
     this.runtime.circuitBreakers[counterKey] = Number(this.runtime.circuitBreakers[counterKey] || 0) + 1;
     this.logger?.warn("circuit_breaker_failure_recorded", {
       failureType: type,
       counterKey,
       counterValue: this.runtime.circuitBreakers[counterKey],
+      effectiveThreshold,
+      isTransient,
       message: error?.message || String(error || "Unknown failure")
     });
     await this.runtime.persistState?.();
 
-    if (Number(this.runtime.circuitBreakers[counterKey]) >= Number(thresholds[maxKey])) {
+    if (Number(this.runtime.circuitBreakers[counterKey]) >= effectiveThreshold) {
       return this.trip(`${type}_circuit_breaker`, {
         error: error?.message || String(error || "Unknown failure"),
         failureType: type,
+        isTransient,
         ...metadata
       });
     }
 
     return {
       tripped: false,
-      counter: this.runtime.circuitBreakers[counterKey]
+      counter: this.runtime.circuitBreakers[counterKey],
+      effectiveThreshold
     };
   }
 

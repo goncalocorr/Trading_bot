@@ -159,8 +159,8 @@ function analyzeTrend(candles) {
   const sma50 = calculateSMA(closes, 50);
   const sma200 = calculateSMA(closes, 200);
 
-  const goldenCross = ema9 > ema21 && ema21 > ema50;
-  const deathCross = ema9 < ema21 && ema21 < ema50;
+  const goldenCross = ema9 > ema21 && ema21 > ema50 && ema50 > ema200;
+  const deathCross = ema9 < ema21 && ema21 < ema50 && ema50 < ema200;
   const priceAboveEma200 = latestClose > ema200;
   const priceAboveSma200 = latestClose > sma200;
   const bias = goldenCross && priceAboveEma200 ? "bullish" : deathCross && !priceAboveEma200 ? "bearish" : "neutral";

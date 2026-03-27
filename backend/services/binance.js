@@ -91,7 +91,26 @@ class BinanceService {
     return Number(error?.code) === -1021 || String(error?.message || "").toLowerCase().includes("timestamp");
   }
 
+  isRateLimitError(error) {
+    return Number(error?.status) === 429 || Number(error?.status) === 418;
+  }
+
+  isRetryableError(error) {
+    const status = Number(error?.status || 0);
+    const message = String(error?.message || "").toLowerCase();
+    return (
+      this.isRateLimitError(error) ||
+      status === 502 ||
+      status === 503 ||
+      message.includes("no response received") ||
+      message.includes("timeout") ||
+      message.includes("econnreset")
+    );
+  }
+
   async request({ method = "GET", url, params = {}, signed = false, data }) {
+    const maxRetries = 3;
+
     const attemptRequest = async () => {
       const finalParams = { ...params };
 
@@ -114,21 +133,31 @@ class BinanceService {
       return response.data;
     };
 
-    try {
-      return await attemptRequest();
-    } catch (error) {
-      const formattedError = this.formatRequestError(error);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await attemptRequest();
+      } catch (error) {
+        const formattedError = this.formatRequestError(error);
 
-      if (signed && this.isTimestampDriftError(formattedError)) {
-        try {
-          await this.syncServerTime();
-          return await attemptRequest();
-        } catch (retryError) {
-          throw this.formatRequestError(retryError);
+        if (signed && this.isTimestampDriftError(formattedError)) {
+          try {
+            await this.syncServerTime();
+            return await attemptRequest();
+          } catch (retryError) {
+            throw this.formatRequestError(retryError);
+          }
         }
-      }
 
-      throw formattedError;
+        if (attempt < maxRetries && this.isRetryableError(formattedError)) {
+          const retryAfter = this.isRateLimitError(formattedError)
+            ? Math.min(30000, 2000 * Math.pow(2, attempt))
+            : 1000 * attempt;
+          await new Promise((resolve) => setTimeout(resolve, retryAfter));
+          continue;
+        }
+
+        throw formattedError;
+      }
     }
   }
 

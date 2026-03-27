@@ -1,13 +1,24 @@
+const crypto = require("crypto");
+
+const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
+
 class Logger {
   constructor(baseContext = {}) {
     this.baseContext = baseContext;
+    this.minLevel = LOG_LEVELS[String(process.env.LOG_LEVEL || "info").toLowerCase()] || LOG_LEVELS.info;
   }
 
   child(context = {}) {
-    return new Logger({
+    const childLogger = new Logger({
       ...this.baseContext,
       ...context
     });
+    childLogger.minLevel = this.minLevel;
+    return childLogger;
+  }
+
+  withCorrelationId(correlationId) {
+    return this.child({ correlationId: correlationId || crypto.randomBytes(6).toString("hex") });
   }
 
   debug(event, metadata = {}) {
@@ -27,6 +38,12 @@ class Logger {
   }
 
   write(level, event, metadata = {}) {
+    const numericLevel = LOG_LEVELS[level] ?? LOG_LEVELS.info;
+
+    if (numericLevel < this.minLevel) {
+      return;
+    }
+
     const payload = {
       ts: new Date().toISOString(),
       level,

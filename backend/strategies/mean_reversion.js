@@ -11,6 +11,8 @@ module.exports = {
     }
 
     const rsi = Number(snapshot15m.rsi14 || 0);
+    const oversoldThreshold = Number(process.env.MEAN_REVERSION_RSI_OVERSOLD || 30);
+    const overboughtThreshold = Number(process.env.MEAN_REVERSION_RSI_OVERBOUGHT || 70);
     // Use 4h structural bias to filter — far less sensitive than 15m EMA alignment,
     // so only truly strong directional trends block the contrarian signal.
     const bias4h = indicators["4h"]?.trend?.bias || "neutral";
@@ -18,7 +20,7 @@ module.exports = {
 
     // BUY: RSI oversold. Block only when the 4h timeframe is in a confirmed
     // structural bearish trend (not just any short-term pullback).
-    if (rsi < 30) {
+    if (rsi < oversoldThreshold) {
       if (bias4h !== "bearish") {
         signals.push({
           pair,
@@ -36,7 +38,7 @@ module.exports = {
 
     // SELL: RSI overbought. Block only when the 4h timeframe is in a confirmed
     // structural bullish trend (not just any short-term rally).
-    if (rsi > 70) {
+    if (rsi > overboughtThreshold) {
       if (bias4h !== "bullish") {
         signals.push({
           pair,

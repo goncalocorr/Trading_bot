@@ -2,13 +2,12 @@ const crypto = require("crypto");
 
 const API_SECRET = process.env.API_SECRET || "";
 
-/**
- * Simple API key authentication middleware.
- * Clients must send the key in the X-API-Key header.
- * If API_SECRET is not configured, the middleware is disabled (open access).
- */
 function requireApiKey(req, res, next) {
+  // In production, API_SECRET must be set — refuse open access.
   if (!API_SECRET) {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(503).json({ ok: false, message: "API_SECRET not configured. Set it before running in production." });
+    }
     return next();
   }
 

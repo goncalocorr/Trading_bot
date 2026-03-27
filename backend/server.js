@@ -530,6 +530,19 @@ async function ensureInitialCapitalSnapshot() {
       realizedProfit: capitalState.realizedProfit,
       unrealizedPnl: capitalState.unrealizedPnl
     });
+  } else {
+    // Record a startup snapshot to avoid gaps if bot was down for a while
+    const lastTimestamp = new Date(capitalState.timestamp).getTime();
+    const hoursSinceLastSnapshot = (Date.now() - lastTimestamp) / (1000 * 60 * 60);
+
+    if (hoursSinceLastSnapshot > 1) {
+      const unrealizedPnl = await riskManager.getUnrealizedPnl();
+      await riskManager.recordCapitalSnapshot({
+        capitalValue: capitalState.capitalValue,
+        realizedProfit: capitalState.realizedProfit,
+        unrealizedPnl
+      });
+    }
   }
 }
 
@@ -978,7 +991,8 @@ async function processSignal({
     metadata: enrichedMetadata,
     buildTradeRiskPlan: (payload) => riskManager.buildTradeRiskPlan({
       ...payload,
-      riskPerTradeOverride: capitalAllocation.effectiveRiskPerTrade
+      riskPerTradeOverride: capitalAllocation.effectiveRiskPerTrade,
+      strategyId: enrichedMetadata?.strategyId || enrichedMetadata?.strategy || ""
     })
   });
 }
@@ -1102,7 +1116,8 @@ async function forcePaperTrade({ pair, side = "BUY" }) {
     },
     buildTradeRiskPlan: (payload) => riskManager.buildTradeRiskPlan({
       ...payload,
-      riskPerTradeOverride: capitalAllocation.effectiveRiskPerTrade
+      riskPerTradeOverride: capitalAllocation.effectiveRiskPerTrade,
+      strategyId: ""
     })
   });
 }
@@ -1171,7 +1186,57 @@ app.use("/api/trades", createCancelRouter(context));
 app.use("/api/dashboard", createDashboardRouter(context));
 app.use("/api/backtest", createBacktestRouter(context));
 
+function validateRequiredEnv() {
+  const required = [
+    { key: "DB_HOST", label: "Database host" },
+    { key: "DB_USER", label: "Database user" },
+    { key: "DB_PASSWORD", label: "Database password" }
+  ];
+  const warnings = [];
+  const errors = [];
+
+  for (const { key, label } of required) {
+    if (!process.env[key]) {
+      errors.push(`${key} (${label}) is required but not set.`);
+    }
+  }
+
+  if (!process.env.BINANCE_API_KEY || !process.env.BINANCE_SECRET) {
+    warnings.push("BINANCE_API_KEY/BINANCE_SECRET not set — exchange features will fail.");
+  }
+
+  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
+    warnings.push("Telegram not configured — notifications disabled.");
+  }
+
+  const numericChecks = [
+    { key: "RISK_PER_TRADE", min: 0.001, max: 0.1 },
+    { key: "DAILY_DRAWDOWN_LIMIT", min: 0.01, max: 0.5 },
+    { key: "SCORE_THRESHOLD", min: 1, max: 12 },
+    { key: "MAX_OPEN_TRADES", min: 1, max: 50 }
+  ];
+
+  for (const { key, min, max } of numericChecks) {
+    const val = Number(process.env[key]);
+    if (process.env[key] && (Number.isNaN(val) || val < min || val > max)) {
+      warnings.push(`${key}=${process.env[key]} is outside expected range [${min}, ${max}].`);
+    }
+  }
+
+  for (const msg of warnings) {
+    logger.warn("env_validation_warning", { message: msg });
+  }
+
+  if (errors.length > 0) {
+    for (const msg of errors) {
+      logger.error("env_validation_error", { message: msg });
+    }
+    throw new Error(`Environment validation failed: ${errors.join("; ")}`);
+  }
+}
+
 async function startServer() {
+  validateRequiredEnv();
   await db.initDatabase();
   await paperBroker.init();
   await runtimePersistence.hydrateRuntime(runtime);
@@ -1240,6 +1305,31 @@ async function startServer() {
 
   cron.schedule("*/5 * * * *", async () => {
     await persistRuntimeState();
+  });
+
+  // Periodic position reconciliation — detect ghost trades or orphaned positions
+  cron.schedule("*/15 * * * *", async () => {
+    try {
+      await reconcileExchangeTrades();
+      await executionOrchestrator.manageOpenTrades();
+    } catch (error) {
+      logger.error("periodic_reconciliation_failed", { message: error.message });
+    }
+  });
+
+  // Periodic capital snapshot for unrealized PnL tracking
+  cron.schedule("0 */4 * * *", async () => {
+    try {
+      const capitalState = await riskManager.getLatestCapitalState();
+      const unrealizedPnl = await riskManager.getUnrealizedPnl();
+      await riskManager.recordCapitalSnapshot({
+        capitalValue: capitalState.capitalValue,
+        realizedProfit: capitalState.realizedProfit,
+        unrealizedPnl
+      });
+    } catch (error) {
+      logger.error("periodic_capital_snapshot_failed", { message: error.message });
+    }
   });
 
   cron.schedule("55 23 * * *", async () => {
