@@ -27,7 +27,7 @@ function StatusPill({ label, tone = "slate" }) {
 
 function PerformanceCard({ label, value, color }) {
   return (
-    <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-4">
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
       <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{label}</p>
       <p className={`mt-2 text-2xl font-semibold ${color}`}>{value}</p>
     </div>
@@ -38,17 +38,17 @@ function RunSetList({ title, description, items = [], emptyLabel }) {
   const { t } = useI18n();
 
   return (
-    <div className="mt-6 rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+    <div className="mt-6 rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-white">{title}</h3>
         <p className="mt-1 text-sm text-slate-300">{description}</p>
       </div>
       <div className="space-y-3">
         {items.length === 0 ? (
-          <div className="rounded-[18px] border border-dashed border-white/10 bg-slate-950/40 p-5 text-sm text-slate-400">{emptyLabel}</div>
+          <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] p-5 text-sm text-slate-400">{emptyLabel}</div>
         ) : (
           items.map((item, index) => (
-            <article key={`${item.label}:${item.runId || index}`} className="grid gap-3 rounded-[18px] border border-white/10 bg-slate-950/50 p-4 md:grid-cols-[1.2fr_0.7fr_0.7fr_0.7fr_0.7fr]">
+            <article key={`${item.label}:${item.runId || index}`} className="grid gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 md:grid-cols-[1.2fr_0.7fr_0.7fr_0.7fr_0.7fr]">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("backtest.set")}</p>
                 <p className="mt-2 text-sm font-semibold text-white">{item.label}</p>
@@ -85,7 +85,7 @@ function Backtest(props) {
   } : null;
 
   return (
-    <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
+    <section className="space-y-5 animate-fade-in">
       <div className="mb-5">
         <h2 className="text-xl font-semibold text-white">{t("backtest.title")}</h2>
         <p className="mt-1 text-sm text-slate-300">{t("backtest.subtitle")}</p>
@@ -95,15 +95,15 @@ function Backtest(props) {
         {t("backtest.warning")}
       </div>
 
-      <form className="grid gap-3 rounded-[22px] border border-white/10 bg-slate-950/40 p-4 md:grid-cols-4" onSubmit={(event) => { event.preventDefault(); onRun(); }}>
-        <input className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none" placeholder="BTCUSDT" value={form.pair} onChange={(event) => onChange("pair", event.target.value)} />
-        <input type="date" className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none" value={form.dateFrom} onChange={(event) => onChange("dateFrom", event.target.value)} />
-        <input type="date" className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none" value={form.dateTo} onChange={(event) => onChange("dateTo", event.target.value)} />
-        <select className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none" value={form.timeframe} onChange={(event) => onChange("timeframe", event.target.value)}><option value="15m">15m</option><option value="1h">1h</option></select>
-        <select className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none" value={form.mode} onChange={(event) => onChange("mode", event.target.value)}><option value="standard">{t("backtest.mode.standard")}</option><option value="walk_forward">{t("backtest.mode.walkForward")}</option></select>
-        <input type="number" step="0.0001" className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none" value={form.feeRate} onChange={(event) => onChange("feeRate", event.target.value)} placeholder={t("backtest.feeRate")} />
-        <input type="number" step="1" className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none" value={form.slippageBps} onChange={(event) => onChange("slippageBps", event.target.value)} placeholder={t("backtest.slippageBps")} />
-        <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-4 md:col-span-4">
+      <form className="grid gap-3 glass-card p-4 md:grid-cols-4" onSubmit={(event) => { event.preventDefault(); onRun(); }}>
+        <input className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none" placeholder="BTCUSDT" value={form.pair} onChange={(event) => onChange("pair", event.target.value)} />
+        <input type="date" className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none" value={form.dateFrom} onChange={(event) => onChange("dateFrom", event.target.value)} />
+        <input type="date" className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none" value={form.dateTo} onChange={(event) => onChange("dateTo", event.target.value)} />
+        <select className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none" value={form.timeframe} onChange={(event) => onChange("timeframe", event.target.value)}><option value="15m">15m</option><option value="1h">1h</option></select>
+        <select className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none" value={form.mode} onChange={(event) => onChange("mode", event.target.value)}><option value="standard">{t("backtest.mode.standard")}</option><option value="walk_forward">{t("backtest.mode.walkForward")}</option></select>
+        <input type="number" step="0.0001" className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none" value={form.feeRate} onChange={(event) => onChange("feeRate", event.target.value)} placeholder={t("backtest.feeRate")} />
+        <input type="number" step="1" className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none" value={form.slippageBps} onChange={(event) => onChange("slippageBps", event.target.value)} placeholder={t("backtest.slippageBps")} />
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 md:col-span-4">
           <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("backtest.strategies")}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {strategies.map((strategy) => {
@@ -121,12 +121,12 @@ function Backtest(props) {
               : t("backtest.noStrategySelected")}
           </p>
         </div>
-        <input type="number" min="1" max="5" className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none" value={form.maxCombinationSize} onChange={(event) => onChange("maxCombinationSize", event.target.value)} placeholder={t("backtest.maxComboSize")} />
+        <input type="number" min="1" max="5" className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none" value={form.maxCombinationSize} onChange={(event) => onChange("maxCombinationSize", event.target.value)} placeholder={t("backtest.maxComboSize")} />
         {form.mode === "walk_forward" ? (
           <>
-            <input type="number" step="1" className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none" value={form.walkForwardTrainDays} onChange={(event) => onChange("walkForwardTrainDays", event.target.value)} placeholder={t("backtest.trainDays")} />
-            <input type="number" step="1" className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none" value={form.walkForwardTestDays} onChange={(event) => onChange("walkForwardTestDays", event.target.value)} placeholder={t("backtest.testDays")} />
-            <input type="number" step="1" className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none" value={form.walkForwardStepDays} onChange={(event) => onChange("walkForwardStepDays", event.target.value)} placeholder={t("backtest.stepDays")} />
+            <input type="number" step="1" className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none" value={form.walkForwardTrainDays} onChange={(event) => onChange("walkForwardTrainDays", event.target.value)} placeholder={t("backtest.trainDays")} />
+            <input type="number" step="1" className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none" value={form.walkForwardTestDays} onChange={(event) => onChange("walkForwardTestDays", event.target.value)} placeholder={t("backtest.testDays")} />
+            <input type="number" step="1" className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none" value={form.walkForwardStepDays} onChange={(event) => onChange("walkForwardStepDays", event.target.value)} placeholder={t("backtest.stepDays")} />
           </>
         ) : null}
         <button type="submit" className="rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-cyan-200 md:col-span-4">{loading ? t("backtest.running") : t("backtest.run")}</button>
@@ -138,7 +138,7 @@ function Backtest(props) {
       <RunSetList title={t("backtest.experimentRunner")} description={t("backtest.experimentRunnerHint")} items={experiments} emptyLabel={t("backtest.experimentRunnerEmpty")} />
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
               <h3 className="text-lg font-semibold text-white">{t("backtest.savedRuns")}</h3>
@@ -148,7 +148,7 @@ function Backtest(props) {
           </div>
           <div className="space-y-3">
             {runs.length === 0 ? (
-              <div className="rounded-[18px] border border-dashed border-white/10 bg-slate-950/40 p-5 text-sm text-slate-400">{t("backtest.noSavedRuns")}</div>
+              <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] p-5 text-sm text-slate-400">{t("backtest.noSavedRuns")}</div>
             ) : runs.map((run) => (
               <article key={run.id} className={`rounded-[18px] border p-4 transition ${selectedRun?.id === run.id ? "border-cyan-300/50 bg-cyan-400/10" : "border-white/10 bg-slate-950/50 hover:bg-white/10"}`}>
                 <div className="flex items-start justify-between gap-4">
@@ -190,7 +190,7 @@ function Backtest(props) {
         <div className="space-y-5">
           {displayResult ? (
             <>
-              <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
                     <h3 className="text-lg font-semibold text-white">{showingSavedRun ? t("backtest.selectedRun") : t("backtest.latestResult")}</h3>
@@ -221,7 +221,7 @@ function Backtest(props) {
               ) : null}
 
               {comparison ? (
-                <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
                   <div className="mb-4">
                     <h3 className="text-lg font-semibold text-white">{t("backtest.comparisonLatest")}</h3>
                     <p className="mt-1 text-sm text-slate-300">{t("backtest.comparisonLatestHint")}</p>
@@ -236,14 +236,14 @@ function Backtest(props) {
               ) : null}
 
               {displayResult.walkForward?.windowCount ? (
-                <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
                   <div className="mb-4">
                     <h3 className="text-lg font-semibold text-white">{t("backtest.walkForwardWindows")}</h3>
                     <p className="mt-1 text-sm text-slate-300">{t("backtest.walkForwardWindowsHint")}</p>
                   </div>
                   <div className="space-y-3">
                     {displayResult.walkForward.windows.map((window) => (
-                      <article key={window.index} className="grid gap-3 rounded-[18px] border border-white/10 bg-slate-950/50 p-4 md:grid-cols-4">
+                      <article key={window.index} className="grid gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 md:grid-cols-4">
                         <div><p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("backtest.window")}</p><p className="mt-2 text-sm font-semibold text-white">#{window.index}</p><p className="mt-1 text-xs text-slate-400">Test {String(window.testPeriod.start).slice(0, 10)} to {String(window.testPeriod.end).slice(0, 10)}</p></div>
                         <div><p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("backtest.inSample")}</p><p className="mt-2 text-sm font-semibold text-sky-300">{formatNumber(window.inSample.totalReturnPercent)}% return</p><p className="mt-1 text-xs text-slate-400">{window.inSample.tradeCount} trades - {formatNumber(window.inSample.winRate)}% win</p></div>
                         <div><p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("backtest.outOfSample")}</p><p className="mt-2 text-sm font-semibold text-emerald-300">{formatNumber(window.outOfSample.totalReturnPercent)}% return</p><p className="mt-1 text-xs text-slate-400">{window.outOfSample.tradeCount} trades - {formatNumber(window.outOfSample.winRate)}% win</p></div>
@@ -254,7 +254,7 @@ function Backtest(props) {
                 </div>
               ) : null}
 
-              <div className="h-72 rounded-[22px] border border-white/10 bg-slate-950/45 p-4">
+              <div className="h-72 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={displayResult.capitalCurve || []}>
                     <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
@@ -266,7 +266,7 @@ function Backtest(props) {
                 </ResponsiveContainer>
               </div>
 
-              <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-4">
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
                 <div className="mb-4">
                   <h3 className="text-lg font-semibold text-white">{t("backtest.tradeLogPreview")}</h3>
                   <p className="mt-1 text-sm text-slate-300">{t("backtest.tradeLogPreviewHint", { count: tradeLogPreview.length })}</p>

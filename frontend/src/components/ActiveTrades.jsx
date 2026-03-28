@@ -7,23 +7,54 @@ function formatValue(value, t) {
   return Number(value).toFixed(4);
 }
 
+function PnlProgressBar({ entry, stop, target, current }) {
+  const entryN = Number(entry || 0);
+  const stopN = Number(stop || 0);
+  const targetN = Number(target || 0);
+  const currentN = Number(current || entryN);
+
+  if (!entryN || !stopN || !targetN || targetN === stopN) return null;
+
+  const range = targetN - stopN;
+  const position = ((currentN - stopN) / range) * 100;
+  const clamped = Math.max(0, Math.min(100, position));
+  const entryMark = ((entryN - stopN) / range) * 100;
+
+  const isProfit = currentN >= entryN;
+
+  return (
+    <div className="relative mt-3">
+      <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+        <span>SL</span>
+        <span>TP</span>
+      </div>
+      <div className="progress-bar relative">
+        {/* Entry marker */}
+        <div
+          className="absolute top-0 h-full w-px bg-white/30 z-10"
+          style={{ left: `${Math.max(0, Math.min(100, entryMark))}%` }}
+        />
+        {/* Current position fill */}
+        <div
+          className={`progress-bar-fill ${isProfit ? "bg-emerald-400" : "bg-rose-400"}`}
+          style={{ width: `${clamped}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function ActiveTrades({ trades = [], onCancel, actionLoading = false }) {
   const { t, formatCurrency } = useI18n();
   const [confirmTrade, setConfirmTrade] = useState(null);
 
-  const handleCancelClick = (trade) => {
-    setConfirmTrade(trade);
-  };
-
   const handleConfirmCancel = () => {
-    if (confirmTrade) {
-      onCancel(confirmTrade.id);
-    }
+    if (confirmTrade) onCancel(confirmTrade.id);
     setConfirmTrade(null);
   };
 
   return (
-    <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
+    <section className="glass-card p-5">
       <ConfirmModal
         open={Boolean(confirmTrade)}
         title={t("active.cancelTitle")}
@@ -34,19 +65,19 @@ function ActiveTrades({ trades = [], onCancel, actionLoading = false }) {
         onCancel={() => setConfirmTrade(null)}
       />
 
-      <div className="mb-5 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-white">{t("active.title")}</h2>
-          <p className="mt-1 text-sm text-slate-300">{t("active.subtitle")}</p>
+          <h3 className="text-base font-semibold text-white">{t("active.title")}</h3>
+          <p className="mt-0.5 text-xs text-slate-500">{t("active.subtitle")}</p>
         </div>
-        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-300">
-          {t("active.count", { count: trades.length })}
+        <span className="flex h-7 min-w-[28px] items-center justify-center rounded-full bg-white/[0.08] px-2.5 text-xs font-bold text-slate-300">
+          {trades.length}
         </span>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         {trades.length === 0 ? (
-          <div className="rounded-[22px] border border-dashed border-white/10 bg-slate-950/40 p-8 text-sm text-slate-400">
+          <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] py-8 text-center text-sm text-slate-500">
             {t("active.empty")}
           </div>
         ) : (
@@ -54,61 +85,74 @@ function ActiveTrades({ trades = [], onCancel, actionLoading = false }) {
             const capitalAtRisk = Number(trade.entry_price || 0) * Number(trade.quantity || 0);
             const stopDistance = Number(trade.entry_price || 0) - Number(trade.stop_loss || 0);
             const maxLoss = stopDistance * Number(trade.quantity || 0);
+            const pnl = Number(trade.livePnl || 0);
+            const pnlPercent = Number(trade.livePnlPercent || 0);
 
             return (
-              <article
-                key={trade.id}
-                className="grid gap-4 rounded-[22px] border border-white/10 bg-slate-950/50 p-5 md:grid-cols-[1.2fr_1fr_auto]"
-              >
-                <div>
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-lg font-semibold text-white">{trade.pair}</h3>
-                    <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
+              <article key={trade.id} className="glass-card-hover p-4">
+                {/* Header row */}
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2.5">
+                    <h4 className="text-sm font-bold text-white">{trade.pair}</h4>
+                    <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${
+                      trade.side === "BUY"
+                        ? "bg-emerald-400/15 text-emerald-300"
+                        : "bg-rose-400/15 text-rose-300"
+                    }`}>
                       {trade.side}
                     </span>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-300">
+                    <span className="rounded-md bg-white/[0.06] px-2 py-0.5 text-[10px] text-slate-400">
                       {trade.metadata?.strategyId || trade.metadata?.strategy || t("common.manual")}
                     </span>
                   </div>
-                  <div className="mt-3 grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
-                    <span>{t("active.entry")}: {formatValue(trade.entry_price, t)}</span>
-                    <span>{t("active.market")}: {formatValue(trade.marketPrice, t)}</span>
-                    <span>{t("active.stop")}: {formatValue(trade.stop_loss, t)}</span>
-                    <span>{t("active.target")}: {formatValue(trade.take_profit, t)}</span>
-                    <span>
-                      {t("active.protection")}: {trade.orderSummary?.activeProtection ? `${trade.orderSummary.activeProtection.role} (${trade.orderSummary.activeProtection.status})` : t("common.notAvailable")}
-                    </span>
-                    <span>
-                      {t("active.lastStep")}: {trade.orderSummary?.latestExecution ? `${trade.orderSummary.latestExecution.role} (${trade.orderSummary.latestExecution.status})` : t("common.notAvailable")}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid gap-2 text-sm text-slate-300">
-                  <span>{t("active.qty")}: {formatValue(trade.quantity, t)}</span>
-                  <span className={Number(trade.livePnl || 0) >= 0 ? "text-emerald-300" : "text-rose-300"}>
-                    {t("active.livePnl")}: {formatValue(trade.livePnl, t)}
-                  </span>
-                  <span className={Number(trade.livePnlPercent || 0) >= 0 ? "text-emerald-300" : "text-rose-300"}>
-                    {t("active.pnlPercent")}: {formatValue(trade.livePnlPercent, t)}%
-                  </span>
-                  <span className="text-slate-400">
-                    {t("active.capital")}: {formatCurrency(capitalAtRisk)}
-                  </span>
-                  <span className="text-rose-400/80">
-                    {t("active.maxLoss")}: {formatCurrency(maxLoss)}
-                  </span>
-                </div>
-
-                <div className="flex items-start justify-end">
                   <button
                     type="button"
-                    onClick={() => handleCancelClick(trade)}
+                    onClick={() => setConfirmTrade(trade)}
                     disabled={actionLoading}
-                    className="rounded-full border border-rose-400/30 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-lg border border-rose-400/20 bg-rose-500/[0.08] px-3 py-1.5 text-[11px] font-semibold text-rose-300 transition hover:bg-rose-500/[0.15] disabled:opacity-50"
                   >
                     {t("active.cancelButton")}
                   </button>
+                </div>
+
+                {/* PnL highlight */}
+                <div className="flex items-baseline gap-3 mb-3">
+                  <span className={`text-xl font-bold ${pnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                    {pnl >= 0 ? "+" : ""}{formatValue(trade.livePnl, t)}
+                  </span>
+                  <span className={`text-sm ${pnlPercent >= 0 ? "text-emerald-400/70" : "text-rose-400/70"}`}>
+                    {pnlPercent >= 0 ? "+" : ""}{formatValue(trade.livePnlPercent, t)}%
+                  </span>
+                </div>
+
+                {/* SL/TP progress bar */}
+                <PnlProgressBar
+                  entry={trade.entry_price}
+                  stop={trade.stop_loss}
+                  target={trade.take_profit}
+                  current={trade.marketPrice}
+                />
+
+                {/* Price grid */}
+                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                  <span className="text-slate-500">{t("active.entry")}</span>
+                  <span className="text-right text-slate-200">{formatValue(trade.entry_price, t)}</span>
+                  <span className="text-slate-500">{t("active.market")}</span>
+                  <span className="text-right text-white font-medium">{formatValue(trade.marketPrice, t)}</span>
+                  <span className="text-slate-500">{t("active.stop")}</span>
+                  <span className="text-right text-rose-300/80">{formatValue(trade.stop_loss, t)}</span>
+                  <span className="text-slate-500">{t("active.target")}</span>
+                  <span className="text-right text-emerald-300/80">{formatValue(trade.take_profit, t)}</span>
+                </div>
+
+                {/* Footer details */}
+                <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-slate-500 border-t border-white/[0.06] pt-3">
+                  <span>{t("active.qty")}: {formatValue(trade.quantity, t)}</span>
+                  <span>{t("active.capital")}: {formatCurrency(capitalAtRisk)}</span>
+                  <span className="text-rose-400/60">{t("active.maxLoss")}: {formatCurrency(maxLoss)}</span>
+                  {trade.orderSummary?.activeProtection && (
+                    <span>{t("active.protection")}: {trade.orderSummary.activeProtection.role}</span>
+                  )}
                 </div>
               </article>
             );

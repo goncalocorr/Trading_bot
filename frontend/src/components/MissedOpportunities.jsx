@@ -3,8 +3,13 @@ import { fetchMissedOpportunities } from "../lib/api";
 import { useI18n } from "../i18n/I18nProvider";
 
 function ScoreBadge({ score }) {
-  const color = score >= 6 ? "text-yellow-400" : "text-slate-400";
-  return <span className={`font-mono font-bold ${color}`}>{score}/12</span>;
+  const pct = Math.round((score / 12) * 100);
+  const color = pct >= 60 ? "bg-amber-400/15 text-amber-300" : "bg-white/[0.06] text-slate-400";
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold ${color}`}>
+      {score}/12
+    </span>
+  );
 }
 
 export default function MissedOpportunities({ tradingPairs = [] }) {
@@ -35,27 +40,29 @@ export default function MissedOpportunities({ tradingPairs = [] }) {
   const opportunities = data?.opportunities || [];
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+    <div className="space-y-5 animate-fade-in">
+      {/* Stats cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { label: t("missed.total7d"), value: stats.total ?? "-" },
           { label: t("missed.avgScore"), value: stats.avg_score ? Number(stats.avg_score).toFixed(1) : "-" },
           { label: t("missed.bestScore"), value: stats.max_score ?? "-" },
           { label: t("missed.pairs"), value: stats.distinct_pairs ?? "-" }
         ].map(({ label, value }) => (
-          <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-center">
-            <p className="text-xs text-slate-400">{label}</p>
-            <p className="mt-1 text-2xl font-bold text-white">{value}</p>
+          <div key={label} className="metric-card items-center text-center">
+            <p className="metric-label">{label}</p>
+            <p className="metric-value text-white">{value}</p>
           </div>
         ))}
       </div>
 
-      <div className="flex items-center gap-3">
-        <label className="text-sm text-slate-400">{t("missed.filterByPair")}</label>
+      {/* Filter bar */}
+      <div className="glass-card p-3 flex items-center gap-3">
+        <label className="text-xs text-slate-500">{t("missed.filterByPair")}</label>
         <select
-          className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white"
+          className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-1.5 text-sm text-white outline-none"
           value={pairFilter}
-          onChange={(event) => setPairFilter(event.target.value)}
+          onChange={(e) => setPairFilter(e.target.value)}
         >
           <option value="">{t("missed.allPairs")}</option>
           {tradingPairs.map((pair) => (
@@ -64,48 +71,47 @@ export default function MissedOpportunities({ tradingPairs = [] }) {
         </select>
         <button
           onClick={() => load(pairFilter)}
-          className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-300 hover:bg-white/10"
+          className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-slate-300 hover:bg-white/[0.08] transition"
         >
           {t("common.refresh")}
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-        {loading ? (
-          <p className="p-6 text-center text-sm text-slate-400">{t("missed.loading")}</p>
-        ) : null}
-        {error ? (
-          <p className="p-6 text-center text-sm text-red-400">{error}</p>
-        ) : null}
-        {!loading && !error && opportunities.length === 0 ? (
-          <p className="p-6 text-center text-sm text-slate-400">{t("missed.empty")}</p>
-        ) : null}
-        {!loading && !error && opportunities.length > 0 ? (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/10 text-left text-xs text-slate-400">
-                <th className="px-4 py-3">{t("missed.time")}</th>
-                <th className="px-4 py-3">{t("dashboard.field.pair")}</th>
-                <th className="px-4 py-3">{t("signal.score")}</th>
-                <th className="px-4 py-3">{t("missed.reasonBlocked")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {opportunities.map((opportunity) => (
-                <tr key={opportunity.id} className="border-b border-white/5 hover:bg-white/5">
-                  <td className="whitespace-nowrap px-4 py-3 text-slate-300">
-                    {formatDateTime(opportunity.timestamp)}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-white">{opportunity.pair}</td>
-                  <td className="px-4 py-3">
-                    <ScoreBadge score={opportunity.score} />
-                  </td>
-                  <td className="px-4 py-3 text-slate-300">{opportunity.reason}</td>
+      {/* Table */}
+      <div className="glass-card overflow-hidden">
+        {loading && (
+          <p className="p-6 text-center text-sm text-slate-500 animate-pulse-soft">{t("missed.loading")}</p>
+        )}
+        {error && (
+          <p className="p-6 text-center text-sm text-rose-300">{error}</p>
+        )}
+        {!loading && !error && opportunities.length === 0 && (
+          <p className="p-6 text-center text-sm text-slate-500">{t("missed.empty")}</p>
+        )}
+        {!loading && !error && opportunities.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-white/[0.06] text-left">
+                  <th className="px-4 py-3 metric-label">{t("missed.time")}</th>
+                  <th className="px-4 py-3 metric-label">{t("dashboard.field.pair")}</th>
+                  <th className="px-4 py-3 metric-label">{t("signal.score")}</th>
+                  <th className="px-4 py-3 metric-label">{t("missed.reasonBlocked")}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : null}
+              </thead>
+              <tbody>
+                {opportunities.map((opp) => (
+                  <tr key={opp.id} className="border-b border-white/[0.03] hover:bg-white/[0.03] transition">
+                    <td className="whitespace-nowrap px-4 py-2.5 text-slate-400">{formatDateTime(opp.timestamp)}</td>
+                    <td className="px-4 py-2.5 font-mono font-semibold text-white">{opp.pair}</td>
+                    <td className="px-4 py-2.5"><ScoreBadge score={opp.score} /></td>
+                    <td className="px-4 py-2.5 text-slate-400">{opp.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

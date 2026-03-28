@@ -16,3 +16,4 @@ frontend/dist
 backend/uploads
 backend/data/paper-broker-state.json
 certbot/
+analysis-data/

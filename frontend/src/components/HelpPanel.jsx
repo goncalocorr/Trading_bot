@@ -480,19 +480,19 @@ function HelpPanel() {
   const copy = useMemo(() => helpCopy[locale] || helpCopy.en, [locale]);
 
   return (
-    <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
+    <section className="space-y-5 animate-fade-in">
       <div className="mb-6">
         <h2 className="text-xl font-semibold text-white">{copy.title}</h2>
         <p className="mt-1 text-sm text-slate-300">{copy.subtitle}</p>
       </div>
 
       <div className="space-y-6">
-        <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+        <div className="glass-card p-5">
           <SectionTitle title={copy.introTitle} />
           <p className="text-sm leading-7 text-slate-200">{copy.introText}</p>
         </div>
 
-        <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+        <div className="glass-card p-5">
           <SectionTitle title={copy.flowTitle} />
           <div className="space-y-3">
             {copy.flowSteps.map((step) => (
@@ -503,11 +503,11 @@ function HelpPanel() {
           </div>
         </div>
 
-        <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+        <div className="glass-card p-5">
           <SectionTitle title={copy.tabsTitle} />
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {copy.tabs.map((tab) => (
-              <article key={tab.title} className="rounded-[20px] border border-white/10 bg-slate-950/60 p-4">
+              <article key={tab.title} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
                 <p className="text-sm font-semibold text-white">{tab.title}</p>
                 <p className="mt-2 text-sm leading-6 text-slate-300">{tab.text}</p>
               </article>
@@ -515,11 +515,11 @@ function HelpPanel() {
           </div>
         </div>
 
-        <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+        <div className="glass-card p-5">
           <SectionTitle title={copy.optionsTitle} />
           <div className="space-y-4">
             {copy.options.map((option) => (
-              <article key={option.name} className="rounded-[20px] border border-white/10 bg-slate-950/60 p-4">
+              <article key={option.name} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
                 <p className="text-sm font-semibold text-white">{option.name}</p>
                 <p className="mt-3 text-sm text-slate-300"><span className="font-semibold text-slate-100">O que faz:</span> {option.what}</p>
                 <p className="mt-2 text-sm text-slate-300"><span className="font-semibold text-slate-100">Justificação:</span> {option.why}</p>
@@ -529,11 +529,11 @@ function HelpPanel() {
           </div>
         </div>
 
-        <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+        <div className="glass-card p-5">
           <SectionTitle title={copy.strategiesTitle} />
           <div className="space-y-4">
             {copy.strategies.map((strategy) => (
-              <article key={strategy.name} className="rounded-[20px] border border-white/10 bg-slate-950/60 p-4">
+              <article key={strategy.name} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <p className="text-sm font-semibold text-white">{strategy.name}</p>
                   <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-slate-300">
@@ -552,11 +552,11 @@ function HelpPanel() {
           </div>
         </div>
 
-        <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+        <div className="glass-card p-5">
           <SectionTitle title={copy.recipesTitle} />
           <div className="grid gap-4 xl:grid-cols-3">
             {copy.recipes.map((recipe) => (
-              <article key={recipe.name} className="rounded-[20px] border border-white/10 bg-slate-950/60 p-4">
+              <article key={recipe.name} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
                 <p className="text-sm font-semibold text-white">{recipe.name}</p>
                 <p className="mt-2 text-sm text-sky-200">{recipe.goal}</p>
                 <div className="mt-4 space-y-2">
@@ -570,7 +570,7 @@ function HelpPanel() {
           </div>
         </div>
 
-        <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+        <div className="glass-card p-5">
           <SectionTitle title={copy.safetyTitle} />
           <div className="space-y-3">
             {copy.safetySteps.map((step) => (
@@ -581,11 +581,11 @@ function HelpPanel() {
           </div>
         </div>
 
-        <div className="rounded-[22px] border border-white/10 bg-slate-950/45 p-5">
+        <div className="glass-card p-5">
           <SectionTitle title={copy.quickExamplesTitle} />
           <div className="grid gap-4 xl:grid-cols-3">
             {copy.quickExamples.map((example) => (
-              <article key={example.title} className="rounded-[20px] border border-white/10 bg-slate-950/60 p-4">
+              <article key={example.title} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
                 <p className="text-sm font-semibold text-white">{example.title}</p>
                 <p className="mt-3 text-sm leading-6 text-slate-300">{example.text}</p>
               </article>
