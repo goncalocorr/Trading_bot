@@ -356,8 +356,8 @@ class RiskManager {
         } else {
           unrealizedPnl += (entryPrice - currentPrice) * quantity;
         }
-      } catch (_error) {
-        // Skip if price fetch fails — use conservative estimate (0)
+      } catch (error) {
+        require("./logger").debug("unrealized_pnl_price_fetch_failed", { pair: trade.pair, message: error.message });
       }
     }
 

@@ -33,7 +33,14 @@ export default function MissedOpportunities({ tradingPairs = [] }) {
   }
 
   useEffect(() => {
-    load(pairFilter);
+    let active = true;
+    setLoading(true);
+    setError(null);
+    fetchMissedOpportunities({ pair: pairFilter || undefined, limit: 100 })
+      .then((result) => { if (active) setData(result); })
+      .catch((err) => { if (active) setError(err.response?.data?.message || err.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [pairFilter]);
 
   const stats = data?.stats || {};

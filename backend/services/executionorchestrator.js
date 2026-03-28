@@ -543,7 +543,8 @@ class ExecutionOrchestrator {
       } else {
         await this.executionEngine.cancelAllOpenOrders(trade.pair);
       }
-    } catch (_error) {
+    } catch (error) {
+      this.logger?.debug("force_close_cancel_orders_failed", { pair: trade.pair, tradeId: trade.id, message: error.message });
       // The position can still be force-closed even if some protective orders are already gone.
     }
 
@@ -749,7 +750,8 @@ class ExecutionOrchestrator {
             .map((order) => Number(order.orderListId))
             .filter((value) => Number.isFinite(value) && value > 0)
         );
-      } catch (_error) {
+      } catch (error) {
+        this.logger?.debug("manage_trades_price_fetch_failed", { pair, message: error.message });
         latestPrices[pair] = null;
         openOrderListIdsByPair[pair] = new Set();
       }
@@ -830,8 +832,8 @@ class ExecutionOrchestrator {
             ocoOrderListId: trade.oco_order_list_id,
             metadata: { ...metadata, trailingHighWaterMark: newHighWaterMark }
           });
-        } catch (_error) {
-          // Non-critical — just tracking, ignore failure.
+        } catch (error) {
+          this.logger?.debug("trailing_stop_update_failed", { tradeId: trade.id, message: error.message });
         }
       }
     }

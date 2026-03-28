@@ -900,7 +900,9 @@ async function processSignal({
         score: scoreResult.score.totalScore,
         reason: executionGuards.reason,
         indicatorsSnapshot: scoreResult.snapshots.indicators
-      }).catch(() => {});
+      }).catch((err) => {
+        logger.warn("missed_opportunity_record_failed", { pair: normalizedPair, message: err.message });
+      });
     }
 
     return {
@@ -1270,29 +1272,53 @@ async function startServer() {
   }
 
   cron.schedule("*/5 * * * *", async () => {
-    await circuitBreaker.checkAutoReset();
-    await autonomousOperator.runAutonomousLoop();
+    try {
+      await circuitBreaker.checkAutoReset();
+      await autonomousOperator.runAutonomousLoop();
+    } catch (error) {
+      logger.error("cron_autonomous_loop_failed", { message: error.message });
+    }
   });
 
   cron.schedule("*/5 * * * *", async () => {
-    const macroStatus = await macroEventsService.evaluateMacroPause();
-    await handleMacroStatusNotifications(macroStatus.status);
+    try {
+      const macroStatus = await macroEventsService.evaluateMacroPause();
+      await handleMacroStatusNotifications(macroStatus.status);
+    } catch (error) {
+      logger.error("cron_macro_status_failed", { message: error.message });
+    }
   });
 
   cron.schedule("*/2 * * * *", async () => {
-    await reconcileExchangeTrades();
+    try {
+      await reconcileExchangeTrades();
+    } catch (error) {
+      logger.error("cron_reconcile_failed", { message: error.message });
+    }
   });
 
   cron.schedule("* * * * *", async () => {
-    await executionOrchestrator.manageOpenTrades();
+    try {
+      await executionOrchestrator.manageOpenTrades();
+    } catch (error) {
+      logger.error("cron_manage_open_trades_failed", { message: error.message });
+    }
   });
 
   cron.schedule("* * * * *", async () => {
-    await signalMonitor.monitorSignalReadinessAlerts();
+    try {
+      await signalMonitor.monitorSignalReadinessAlerts();
+    } catch (error) {
+      logger.error("cron_signal_monitor_failed", { message: error.message });
+    }
   });
 
   cron.schedule("0 * * * *", async () => {
-    await strategyHealthMonitor.monitor();
+    try {
+      await strategyHealthMonitor.monitor();
+    } catch (error) {
+      logger.error("cron_strategy_health_failed", { message: error.message });
+    }
   });
 
   cron.schedule("15 * * * *", async () => {
@@ -1309,32 +1335,47 @@ async function startServer() {
       currentRegimeId = null;
     }
 
-    await paperValidationMonitor.monitorChampion();
-    await paperValidationMonitor.monitorRecommendations(currentRegimeId);
-    await paperValidationMonitor.monitorAutoGovernance(currentRegimeId);
+    try {
+      await paperValidationMonitor.monitorChampion();
+      await paperValidationMonitor.monitorRecommendations(currentRegimeId);
+      await paperValidationMonitor.monitorAutoGovernance(currentRegimeId);
+    } catch (error) {
+      logger.error("cron_paper_validation_failed", { message: error.message });
+    }
   });
 
   cron.schedule("0 */6 * * *", async () => {
-    await autonomousOperator.monitorDailyLoop();
+    try {
+      await autonomousOperator.monitorDailyLoop();
+    } catch (error) {
+      logger.error("cron_daily_loop_failed", { message: error.message });
+    }
   });
 
   cron.schedule("*/10 * * * *", async () => {
-    runtime.healthSnapshot = await healthMonitor.buildHealthSnapshot();
+    try {
+      runtime.healthSnapshot = await healthMonitor.buildHealthSnapshot();
+    } catch (error) {
+      logger.error("cron_health_snapshot_failed", { message: error.message });
+    }
   });
 
   cron.schedule("*/5 * * * *", async () => {
-    await persistRuntimeState();
-  });
-
-  // Periodic position reconciliation — detect ghost trades or orphaned positions
-  cron.schedule("*/15 * * * *", async () => {
     try {
-      await reconcileExchangeTrades();
-      await executionOrchestrator.manageOpenTrades();
+      await persistRuntimeState();
     } catch (error) {
-      logger.error("periodic_reconciliation_failed", { message: error.message });
+      logger.error("cron_persist_state_failed", { message: error.message });
     }
   });
+
+  // Purge missed opportunities older than 30 days to prevent unbounded table growth
+  cron.schedule("0 3 * * *", async () => {
+    try {
+      await db.execute("DELETE FROM missed_opportunities WHERE timestamp < DATE_SUB(NOW(), INTERVAL 30 DAY)");
+    } catch (error) {
+      logger.error("cron_missed_opportunities_purge_failed", { message: error.message });
+    }
+  }, { timezone: "UTC" });
 
   // Periodic capital snapshot for unrealized PnL tracking
   cron.schedule("0 */4 * * *", async () => {
@@ -1352,16 +1393,28 @@ async function startServer() {
   });
 
   cron.schedule("55 23 * * *", async () => {
-    await reporterService.generateReport("daily");
+    try {
+      await reporterService.generateReport("daily");
+    } catch (error) {
+      logger.error("cron_daily_report_failed", { message: error.message });
+    }
   }, { timezone: "UTC" });
 
   cron.schedule("55 23 * * 0", async () => {
-    await reporterService.generateReport("weekly");
+    try {
+      await reporterService.generateReport("weekly");
+    } catch (error) {
+      logger.error("cron_weekly_report_failed", { message: error.message });
+    }
   }, { timezone: "UTC" });
 
   cron.schedule("55 23 * * *", async () => {
-    if (isLastUtcDayOfMonth(new Date())) {
-      await reporterService.generateReport("monthly");
+    try {
+      if (isLastUtcDayOfMonth(new Date())) {
+        await reporterService.generateReport("monthly");
+      }
+    } catch (error) {
+      logger.error("cron_monthly_report_failed", { message: error.message });
     }
   }, { timezone: "UTC" });
 

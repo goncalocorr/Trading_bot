@@ -56,7 +56,7 @@ class PaperBroker {
         }
       }
     } catch (error) {
-      console.warn(`Paper broker MySQL init failed, falling back to JSON: ${error.message}`);
+      require("./logger").warn("paper_broker_mysql_init_failed", { message: error.message, fallback: "json" });
       this._tryLoadLegacyJson();
     }
   }
@@ -90,7 +90,7 @@ class PaperBroker {
       const parsedState = JSON.parse(rawState);
       this._applyState(parsedState);
     } catch (error) {
-      console.warn(`Paper broker legacy JSON state could not be restored: ${error.message}`);
+      require("./logger").warn("paper_broker_legacy_json_restore_failed", { message: error.message });
     }
   }
 
@@ -98,7 +98,7 @@ class PaperBroker {
     try {
       await RuntimeStateModel.setValue(STATE_KEY, this.serializeState());
     } catch (error) {
-      console.warn(`Paper broker MySQL persist failed: ${error.message}`);
+      require("./logger").warn("paper_broker_mysql_persist_failed", { message: error.message });
     }
   }
 
@@ -125,7 +125,7 @@ class PaperBroker {
   persistState() {
     // Fire-and-forget async persist to MySQL. In-memory state is always authoritative.
     this._persistAsync().catch((err) => {
-      console.error(`Paper broker persist failed (fire-and-forget): ${err.message}`);
+      require("./logger").warn("paper_broker_persist_fire_and_forget_failed", { message: err.message });
     });
   }
 

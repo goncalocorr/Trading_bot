@@ -109,7 +109,8 @@ CREATE TABLE IF NOT EXISTS backtest_run_marks (
   PRIMARY KEY (id),
   UNIQUE KEY uniq_backtest_run_marks_run_id (run_id),
   KEY idx_backtest_run_marks_favorite (is_favorite),
-  KEY idx_backtest_run_marks_promoted (promoted_to_paper)
+  KEY idx_backtest_run_marks_promoted (promoted_to_paper),
+  CONSTRAINT fk_backtest_run_marks_run_id FOREIGN KEY (run_id) REFERENCES backtest_runs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS backtest_promotion_events (
@@ -121,7 +122,8 @@ CREATE TABLE IF NOT EXISTS backtest_promotion_events (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_backtest_promotion_events_slot_created (slot, created_at),
-  KEY idx_backtest_promotion_events_run_created (run_id, created_at)
+  KEY idx_backtest_promotion_events_run_created (run_id, created_at),
+  CONSTRAINT fk_backtest_promotion_events_run_id FOREIGN KEY (run_id) REFERENCES backtest_runs(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS runtime_state (
