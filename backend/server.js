@@ -1271,12 +1271,15 @@ async function startServer() {
     await telegramService.notifyStartupWithOpenTrades(openTradesAtStartup);
   }
 
-  cron.schedule("*/5 * * * *", async () => {
+  cron.schedule("*/2 * * * *", async () => {
     try {
       await circuitBreaker.checkAutoReset();
       await autonomousOperator.runAutonomousLoop();
     } catch (error) {
       logger.error("cron_autonomous_loop_failed", { message: error.message });
+      if (telegramService.isConfigured()) {
+        await telegramService.sendMessage(`⚠️ Autonomous loop failed: ${error.message}`).catch(() => {});
+      }
     }
   });
 
@@ -1294,6 +1297,9 @@ async function startServer() {
       await reconcileExchangeTrades();
     } catch (error) {
       logger.error("cron_reconcile_failed", { message: error.message });
+      if (telegramService.isConfigured()) {
+        await telegramService.sendMessage(`⚠️ Exchange reconciliation failed: ${error.message}`).catch(() => {});
+      }
     }
   });
 
@@ -1302,6 +1308,9 @@ async function startServer() {
       await executionOrchestrator.manageOpenTrades();
     } catch (error) {
       logger.error("cron_manage_open_trades_failed", { message: error.message });
+      if (telegramService.isConfigured()) {
+        await telegramService.sendMessage(`⚠️ Trade management failed: ${error.message}`).catch(() => {});
+      }
     }
   });
 
@@ -1368,12 +1377,13 @@ async function startServer() {
     }
   });
 
-  // Purge missed opportunities older than 30 days to prevent unbounded table growth
+  // Purge old data to prevent unbounded table growth
   cron.schedule("0 3 * * *", async () => {
     try {
       await db.execute("DELETE FROM missed_opportunities WHERE timestamp < DATE_SUB(NOW(), INTERVAL 30 DAY)");
+      await db.execute("DELETE FROM capital_history WHERE timestamp < DATE_SUB(NOW(), INTERVAL 90 DAY)");
     } catch (error) {
-      logger.error("cron_missed_opportunities_purge_failed", { message: error.message });
+      logger.error("cron_data_purge_failed", { message: error.message });
     }
   }, { timezone: "UTC" });
 
