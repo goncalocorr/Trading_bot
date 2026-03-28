@@ -23,8 +23,34 @@
       "Bash(grep \"\\\\.js$\")",
       "Bash(grep:*)",
       "Bash(wc:*)",
-      "Bash(find /c/Users/saloc/Documents/trading-bot -name .env* -o -name *.env)"
+      "Bash(find /c/Users/saloc/Documents/trading-bot -name .env* -o -name *.env)",
+      "mcp__trading-bot__bot_health",
+      "mcp__trading-bot__bot_dashboard",
+      "mcp__trading-bot__bot_stats",
+      "mcp__trading-bot__bot_capital_history",
+      "mcp__trading-bot__bot_trades",
+      "mcp__trading-bot__bot_missed_opportunities",
+      "mcp__trading-bot__bot_signal_debug",
+      "mcp__trading-bot__bot_settings",
+      "Bash(find /c/Users/saloc/Documents/trading-bot/frontend/src -type f -name *.js -o -name *.jsx)",
+      "Bash(ls -la /c/Users/saloc/Documents/trading-bot/frontend/src/components/*.jsx)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(npx vite:*)",
+      "Bash(find /c/Users/saloc/Documents/trading-bot/frontend/src -type f -name *.jsx -o -name *.js)",
+      "Bash(npx jest:*)"
     ]
   },
-  "model": "opus"
+  "model": "opus",
+  "mcpServers": {
+    "trading-bot": {
+      "command": "node",
+      "args": [
+        "mcp/trading-bot-server.js"
+      ],
+      "env": {
+        "BOT_API_URL": "http://localhost:3000",
+        "BOT_API_SECRET": ""
+      }
+    }
+  }
 }

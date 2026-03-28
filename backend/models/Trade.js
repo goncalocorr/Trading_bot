@@ -196,7 +196,7 @@ class TradeModel {
         pair: payload.pair,
         timestamp: payload.timestamp || new Date(),
         score: payload.score,
-        reason: payload.reason,
+        reason: (payload.reason || '').slice(0, 255),
         indicatorsSnapshot: JSON.stringify(payload.indicatorsSnapshot || {})
       }
     );
