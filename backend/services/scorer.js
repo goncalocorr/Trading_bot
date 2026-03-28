@@ -205,12 +205,13 @@ function evaluateSpread(orderBookSnapshot) {
 
 function buildDecision(totalScore, executionThreshold = 8) {
   const normalizedThreshold = Number(executionThreshold || 8);
+  const missedThreshold = Number(process.env.SCORE_MISSED_THRESHOLD || 5);
 
   if (totalScore >= normalizedThreshold) {
     return "EXECUTE";
   }
 
-  if (totalScore >= 5) {
+  if (totalScore >= missedThreshold) {
     return "MISSED";
   }
 

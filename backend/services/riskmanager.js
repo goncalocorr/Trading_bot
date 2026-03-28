@@ -120,10 +120,20 @@ class RiskManager {
   }) {
     const numericCapital = Number(capital);
     const numericEntryPrice = Number(entryPrice);
+
+    if (!Number.isFinite(numericCapital) || numericCapital <= 0) {
+      return { capital: 0, riskPerTrade: 0, riskAmount: 0, effectiveRiskAmount: 0, stopDistance: 0, quantity: 0, positionNotional: 0, cappedByCapital: false };
+    }
+
     const exits = this.calculateExitLevels({ side, entryPrice, atr, strategyId });
+
+    if (exits.stopDistance <= 0) {
+      return { capital: numericCapital, riskPerTrade: Number(riskPerTrade), riskAmount: 0, effectiveRiskAmount: 0, stopDistance: 0, quantity: 0, positionNotional: 0, cappedByCapital: false };
+    }
+
     const slippageBuffer = Number(process.env.SLIPPAGE_BUFFER_PERCENT || 0.1) / 100;
     const adjustedEntryPrice = numericEntryPrice * (1 + slippageBuffer);
-    const riskAmount = numericCapital * Number(riskPerTrade);
+    const riskAmount = numericCapital * Math.max(0, Math.min(1, Number(riskPerTrade)));
     const riskSizedQuantity = riskAmount / exits.stopDistance;
     const maxAffordableQuantity = adjustedEntryPrice > 0 ? numericCapital / adjustedEntryPrice : 0;
     const quantity = Math.max(0, Math.min(riskSizedQuantity, maxAffordableQuantity));
@@ -166,7 +176,7 @@ class RiskManager {
     const numericCapital = Number(currentCapital);
     const numericRealized = Number(currentRealizedProfit);
     const numericTradePnl = Number(tradePnl);
-    const numericCompoundRatio = Number(compoundRatio);
+    const numericCompoundRatio = Math.max(0, Math.min(1, Number(compoundRatio)));
 
     if (numericTradePnl <= 0) {
       return {

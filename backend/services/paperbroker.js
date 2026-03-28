@@ -124,7 +124,9 @@ class PaperBroker {
 
   persistState() {
     // Fire-and-forget async persist to MySQL. In-memory state is always authoritative.
-    this._persistAsync();
+    this._persistAsync().catch((err) => {
+      console.error(`Paper broker persist failed (fire-and-forget): ${err.message}`);
+    });
   }
 
   async getBestBookTicker(symbol) {

@@ -4,7 +4,19 @@ const apiKey = import.meta.env.VITE_API_SECRET || "";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "",
-  headers: apiKey ? { "X-API-Key": apiKey } : {}
+  headers: apiKey ? { "X-API-Key": apiKey } : {},
+  timeout: 15000
+});
+
+// Retry transient errors (network, 502, 503, 504) once
+api.interceptors.response.use(null, async (error) => {
+  const config = error.config;
+  if (config && !config._retried && (!error.response || [502, 503, 504].includes(error.response.status))) {
+    config._retried = true;
+    await new Promise((r) => setTimeout(r, 1000));
+    return api(config);
+  }
+  return Promise.reject(error);
 });
 
 export async function fetchDashboard() {

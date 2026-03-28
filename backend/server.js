@@ -1123,8 +1123,20 @@ async function forcePaperTrade({ pair, side = "BUY" }) {
 }
 
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || "*",
+  methods: ["GET", "POST", "PATCH", "DELETE"],
+  allowedHeaders: ["Content-Type", "X-API-Key"]
+}));
 app.use(express.json());
+
+// Request logging for non-health endpoints
+app.use((req, _res, next) => {
+  if (req.path !== "/health") {
+    logger.debug("http_request", { method: req.method, path: req.path });
+  }
+  next();
+});
 app.use(
   rateLimit({
     windowMs: 60 * 1000,
@@ -1185,6 +1197,13 @@ app.use("/api/trades", createTradesRouter(context));
 app.use("/api/trades", createCancelRouter(context));
 app.use("/api/dashboard", createDashboardRouter(context));
 app.use("/api/backtest", createBacktestRouter(context));
+
+// Global error handler — sanitize messages in production
+app.use((err, _req, res, _next) => {
+  logger.error("unhandled_route_error", { message: err.message, stack: err.stack });
+  const message = process.env.NODE_ENV === "production" ? "Internal server error" : err.message;
+  res.status(err.status || 500).json({ ok: false, message });
+});
 
 function validateRequiredEnv() {
   const required = [

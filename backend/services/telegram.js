@@ -490,24 +490,34 @@ class TelegramService {
       };
     }
 
-    try {
-      const response = await this.http.post(this.getApiUrl("sendMessage"), {
-        chat_id: this.chatId,
-        text,
-        parse_mode: options.parseMode || "HTML",
-        disable_web_page_preview: true
-      });
+    const maxRetries = 2;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await this.http.post(this.getApiUrl("sendMessage"), {
+          chat_id: this.chatId,
+          text,
+          parse_mode: options.parseMode || "HTML",
+          disable_web_page_preview: true
+        });
 
-      return {
-        ok: true,
-        data: response.data
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        skipped: false,
-        reason: error.response?.data?.description || error.message
-      };
+        return {
+          ok: true,
+          data: response.data
+        };
+      } catch (error) {
+        const status = error.response?.status;
+        const isRetryable = !status || status === 429 || status >= 500;
+        if (attempt < maxRetries && isRetryable) {
+          const delay = status === 429 ? 3000 : 1000 * attempt;
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+        return {
+          ok: false,
+          skipped: false,
+          reason: error.response?.data?.description || error.message
+        };
+      }
     }
   }
 

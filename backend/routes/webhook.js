@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const express = require("express");
 const { body, validationResult } = require("express-validator");
 
@@ -22,7 +23,14 @@ module.exports = function createWebhookRouter(context) {
         });
       }
 
-      if (req.body.secret !== process.env.WEBHOOK_SECRET) {
+      const expected = process.env.WEBHOOK_SECRET || "";
+      const provided = String(req.body.secret || "");
+
+      if (
+        !expected ||
+        provided.length !== expected.length ||
+        !crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected))
+      ) {
         return res.status(401).json({
           ok: false,
           message: "Invalid webhook secret."
