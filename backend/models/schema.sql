@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS orders (
   PRIMARY KEY (id),
   KEY idx_orders_trade_id (trade_id),
   KEY idx_orders_pair_status (pair, status),
-  KEY idx_orders_role_status (role, status)
+  KEY idx_orders_role_status (role, status),
+  CONSTRAINT fk_orders_trade_id FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS capital_history (

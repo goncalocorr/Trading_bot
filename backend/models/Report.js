@@ -34,13 +34,15 @@ class ReportModel {
   }
 
   async listReports(type, limit = 20) {
+    const params = type ? { type } : {};
+    params.limit = Math.max(1, Math.min(1000, Number(limit || 20)));
     const rows = await db.query(
       `SELECT *
        FROM reports
        ${type ? "WHERE type = :type" : ""}
        ORDER BY created_at DESC, id DESC
-       LIMIT ${Number(limit)}`,
-      type ? { type } : {}
+       LIMIT :limit`,
+      params
     );
 
     return rows.map((row) => this.mapReport(row));

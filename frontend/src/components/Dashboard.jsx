@@ -289,7 +289,7 @@ function Dashboard() {
       if (backtestStrategiesResponse) {
         setBacktestForm((current) => ({
           ...current,
-          activeStrategies: current.activeStrategies.length > 0
+          activeStrategies: (Array.isArray(current.activeStrategies) && current.activeStrategies.length > 0)
             ? current.activeStrategies
             : (backtestStrategiesResponse.strategies || []).filter((s) => s.activeByDefault).map((s) => s.id)
         }));

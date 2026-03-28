@@ -103,6 +103,7 @@ async function withTransaction(handler) {
   const connection = await getPool().getConnection();
 
   try {
+    await connection.query("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED");
     await connection.beginTransaction();
     const result = await handler(connection);
     await connection.commit();

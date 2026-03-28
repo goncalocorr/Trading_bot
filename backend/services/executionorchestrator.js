@@ -148,7 +148,12 @@ class ExecutionOrchestrator {
           source: "exchange_trade_history"
         };
       }
-    } catch (_error) {
+    } catch (error) {
+      this.logger?.warn("exchange_closure_snapshot_failed", {
+        pair: trade.pair,
+        tradeId: trade.id,
+        message: error.message
+      });
       // Fall back to ticker-based estimation if trade history lookup fails.
     }
 
@@ -172,6 +177,10 @@ class ExecutionOrchestrator {
 
     // Compute capital update before the transaction (pure arithmetic, no DB write).
     const capitalState = await this.riskManager.getLatestCapitalState();
+    if (!capitalState) {
+      this.logger?.error("finalize_trade_closure_no_capital_state", { tradeId: trade.id });
+      throw new Error(`Cannot finalize trade ${trade.id}: capital state unavailable.`);
+    }
     const capitalUpdate = this.riskManager.applyCompoundProfit({
       currentCapital: capitalState.capitalValue,
       currentRealizedProfit: capitalState.realizedProfit,

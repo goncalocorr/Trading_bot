@@ -67,20 +67,26 @@ class BinanceService {
   }
 
   async syncServerTime() {
-    const response = await this.http.request({
-      method: "GET",
-      url: "/api/v3/time"
-    });
-    const serverTime = Number(response.data?.serverTime || 0);
+    if (this._syncingTime) return { serverTime: 0, timeOffsetMs: this.timeOffsetMs };
+    this._syncingTime = true;
+    try {
+      const response = await this.http.request({
+        method: "GET",
+        url: "/api/v3/time"
+      });
+      const serverTime = Number(response.data?.serverTime || 0);
 
-    if (Number.isFinite(serverTime) && serverTime > 0) {
-      this.timeOffsetMs = serverTime - Date.now();
+      if (Number.isFinite(serverTime) && serverTime > 0) {
+        this.timeOffsetMs = serverTime - Date.now();
+      }
+
+      return {
+        serverTime,
+        timeOffsetMs: this.timeOffsetMs
+      };
+    } finally {
+      this._syncingTime = false;
     }
-
-    return {
-      serverTime,
-      timeOffsetMs: this.timeOffsetMs
-    };
   }
 
   getAdjustedTimestamp() {
@@ -289,10 +295,13 @@ class BinanceService {
     const startTime = Number(options.startTime || 0);
     const endTime = Number(options.endTime || 0);
     const limitPerRequest = Math.min(Number(options.limitPerRequest || MAX_KLINES_PER_REQUEST), MAX_KLINES_PER_REQUEST);
+    const maxIterations = Number(options.maxIterations || 5000);
     const allCandles = [];
     let nextStartTime = startTime;
+    let iterations = 0;
 
-    while (true) {
+    while (iterations < maxIterations) {
+      iterations++;
       // eslint-disable-next-line no-await-in-loop
       const batch = await this.getCandles(normalizedSymbol, interval, {
         startTime: nextStartTime || undefined,

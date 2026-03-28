@@ -136,7 +136,7 @@ function SettingsPanel({ settings, form, onChange, onSave, saving = false, strat
                 <button
                   key={strategy.id}
                   type="button"
-                  onClick={() => onChange("activeStrategies", selected ? form.activeStrategies.filter((id) => id !== strategy.id) : [...(form.activeStrategies || []), strategy.id])}
+                  onClick={() => onChange("activeStrategies", selected ? (form.activeStrategies || []).filter((id) => id !== strategy.id) : [...(form.activeStrategies || []), strategy.id])}
                   className={`rounded-lg px-3 py-1.5 text-[11px] font-bold transition ${
                     selected
                       ? "border border-emerald-300/30 bg-emerald-300/10 text-emerald-200"

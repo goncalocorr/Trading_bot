@@ -40,13 +40,13 @@ class BacktestPromotionEventModel {
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const normalizedLimit = Math.max(1, Number(limit || 20));
+    params.limit = Math.max(1, Math.min(1000, Number(limit || 20)));
     const rows = await db.query(
       `SELECT *
        FROM backtest_promotion_events
        ${whereClause}
        ORDER BY created_at DESC, id DESC
-       LIMIT ${normalizedLimit}`,
+       LIMIT :limit`,
       params
     );
 

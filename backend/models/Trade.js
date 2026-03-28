@@ -102,15 +102,14 @@ class TradeModel {
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const limit = Number(filters.limit || 100);
+    params.limit = Math.max(1, Math.min(1000, Number(filters.limit || 100)));
 
     const rows = await db.query(
       `SELECT *
        FROM trades
        ${whereClause}
        ORDER BY opened_at DESC, id DESC
-       LIMIT ${limit}`
-      ,
+       LIMIT :limit`,
       params
     );
 

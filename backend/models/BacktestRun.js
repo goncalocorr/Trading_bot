@@ -60,12 +60,13 @@ class BacktestRunModel {
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    params.limit = Math.max(1, Math.min(1000, Number(limit || 20)));
     const rows = await db.query(
       `SELECT *
        FROM backtest_runs
        ${whereClause}
        ORDER BY created_at DESC, id DESC
-       LIMIT ${Number(limit)}`,
+       LIMIT :limit`,
       params
     );
     const runs = rows.map((row) => this.mapRun(row));
